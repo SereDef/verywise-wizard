@@ -1,0 +1,10 @@
+stack_number	stack_name
+1	(Intercept)
+2	tot_steps
+3	age
+4	sexM
+5	ethnblack
+6	ethnhispanic
+7	ethnasian
+8	ethnother
+9	int
