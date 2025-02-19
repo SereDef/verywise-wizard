@@ -1,5 +1,5 @@
 
-<img src="www/vwwizard_logo.png" width="128"/>
+<img src="www/vwwizard_logo.png" width="250"/>
 
 Interactive application for visualizing whole-brain surface vertex-wise statistical maps.
 The app generates **3D brain surface maps** based on a given results directory. 
