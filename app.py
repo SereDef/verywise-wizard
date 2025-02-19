@@ -44,7 +44,7 @@ def app_server(input, output, session):
 
     # TAB 2: MAIN RESULTS
     model1, term1, measure1 = update_single_result('result1', go=input.go_button, input_resdir=input.results_folder)
-    model2, term2, measure2 = update_single_result('result2', go=input.go_button, input_resdir=input.results_folder)git s
+    model2, term2, measure2 = update_single_result('result2', go=input.go_button, input_resdir=input.results_folder)
 
     # TAB 1: FOLDER INFO
     @output
