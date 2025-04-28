@@ -37,6 +37,11 @@ def welcome_page(start_folder, tab_name):
             ' ',  # spacer
             ui.output_ui(id='input_folder_info'),
             ui.markdown('Have fun!</br></br></br></br>'),
+            ui.layout_columns(
+                ui.output_image("funders_image"),
+                ui.markdown('This work was supported by the **FLAG-ERA** grant [*Infant2Adult*](https://www.infant2adult.com/home) '
+                        'and by The Netherlands Organization for Health Research and Development (**ZonMw**, grant number 16080606).'),
+                        col_widths=(3, 8, -1)),
             value=tab_name)
 
 

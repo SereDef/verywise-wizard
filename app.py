@@ -52,6 +52,11 @@ def app_server(input, output, session):
     @reactive.event(input.go_button)
     def input_folder_info():
         return describe_input_folder(input.results_folder())
+    
+    @render.image  
+    def funders_image():
+        img = {"src": here / "www/funders.png", "width": "100%"}  
+        return img
 
     # TAB 3: OVERLAP
     @render.text
