@@ -1,7 +1,9 @@
 import os
+import re
 import numpy as np
 import pandas as pd
 import warnings
+
 
 from nilearn import datasets
 import nibabel as nb
@@ -9,52 +11,184 @@ import nibabel as nb
 import matplotlib as mpl
 from matplotlib.colors import ListedColormap
 
+from shiny import ui
+
 import definitions.layout_styles as styles
 
 # ===== DATA PROCESSING FUNCTIONS ==============================================================
 
-# def check_results_directory(input_path):
+def resolve_resdir(resdir):
+
+    if os.path.isdir(resdir):
+        return resdir
+    
+    # GitHub folder URL
+    if re.match(r"https://github.com/.+/.+/tree/.+/.+", resdir):
+
+        return download_github_folder(resdir)
+    
+    # (Handle other cases: zip, repo, etc.)
+    raise ValueError("Unsupported path format")
+
+def download_github_folder(github_url, github_token=None, GITHUB_FOLDER_CACHE = {}):
+    """
+    Downloads a folder from a public GitHub repo to a temp directory.
+    github_url: e.g. https://github.com/user/repo/tree/main/path/to/folder
+    Returns the local path to the downloaded folder.
+    """
+    import tempfile
+    import requests
+
+    # Check cache first
+    if github_url in GITHUB_FOLDER_CACHE:
+        return GITHUB_FOLDER_CACHE[github_url]
+    
+    m = re.match(r"https://github.com/([^/]+)/([^/]+)/tree/([^/]+)/(.*)", github_url)
+    if not m:
+        raise ValueError("URL must be of the form https://github.com/user/repo/tree/branch/path/to/folder")
+    user, repo, branch, folder_path = m.groups()
+
+    api_url = f"https://api.github.com/repos/{user}/{repo}/contents/{folder_path}?ref={branch}"
+    tmp_dir = tempfile.mkdtemp()
+    folder_local = os.path.join(tmp_dir, os.path.basename(folder_path))
+    os.makedirs(folder_local, exist_ok=True)
+
+    headers = {}
+    # Try to get token from environment if not provided
+    if github_token is None:
+        github_token = os.environ.get("GITHUB_TOKEN")
+    if github_token:
+        headers["Authorization"] = f"token {github_token}"
+
+    def download_contents(api_url, local_dir, print_progress=True):
+        resp = requests.get(api_url, headers=headers)
+        resp.raise_for_status()
+        element_count = len(resp.json())
+        with ui.Progress(min=0, max=element_count) as p:
+            for e, file_info in enumerate(resp.json()):
+
+                if print_progress: 
+                    p.set(value=e + 1, message=f"Downloading [{e + 1}/{element_count}]: {file_info['name']}...")
+                else: 
+                    p.set(value=e + 1, message=f"[{e + 1}/{element_count}]: {file_info['name']}...")
+
+                if file_info["type"] == "dir":
+                    subfolder_local = os.path.join(local_dir, file_info["name"])
+                    os.makedirs(subfolder_local, exist_ok=True)
+                    download_contents(file_info["url"], subfolder_local, print_progress=False)
+
+                elif file_info["type"] == "file":
+                    file_resp = requests.get(file_info["download_url"])
+                    file_resp.raise_for_status()
+                    with open(os.path.join(local_dir, file_info["name"]), "wb") as f:
+                        f.write(file_resp.content)
+                
+
+    download_contents(api_url, folder_local)
+
+    # Store in cache
+    GITHUB_FOLDER_CACHE[github_url] = folder_local
+
+    return folder_local
 
 
-def detect_models(resdir):
-    # Make sure path is correctly specified
-    resdir = f'{resdir}/' if resdir[-1] != '/' else resdir
+def detect_models(resdir, results_format):
+
+    resdir = resolve_resdir(resdir)
 
     # List all results
-    top_level = [f for f in os.listdir(resdir) if not f.startswith('.')]
-    all_results = dict()
-    for p in sorted(top_level):
-        subdir_list = [f for f in os.listdir(f'{resdir}/{p}') if not f.startswith('.')]
-        # in each directory in results, subdirectories have structure "hemi.model_name.measure"
-        all_results[p] = pd.DataFrame([d.split('.') for d in sorted(subdir_list)],
-                                      columns=['hemi', 'model', 'meas'])
+    all_results = {'results_directory': resdir, 
+                   'results_format': results_format,
+                   'results': {}}
 
+    top_level = [f for f in os.listdir(resdir) if not f.startswith('.')]
+
+    if results_format == 'verywise':
+
+        for p in sorted(top_level):
+            subdir_list = [f for f in os.listdir(os.path.join(resdir, p)) if (
+                os.path.isdir(os.path.join(resdir, p, f))) & (not f.startswith('.'))]
+            
+            if len(subdir_list) == 0: # already found the deepest level
+
+                res = pd.DataFrame([d.split('.')[:2] for d in os.listdir(os.path.join(resdir, p)) if (
+                    d.endswith('.mgh'))],
+                    columns=['hemi', 'meas']).drop_duplicates()
+                
+                res['model'] = p
+                all_results['results'][p] = res
+
+            else:
+                subdir_res = pd.DataFrame()
+                
+                for subdir in subdir_list:
+                    res = pd.DataFrame([d.split('.')[:2] for d in os.listdir(os.path.join(resdir, p, subdir)) if (
+                        d.endswith('.mgh'))],
+                        columns=['hemi', 'meas']).drop_duplicates()
+                    
+                    res['model'] = subdir
+                    subdir_res = pd.concat([subdir_res, res])
+                
+                all_results['results'][p] = subdir_res
+    
+    elif results_format == 'QDECR': #TODO: adapt this to all QDECR formats
+
+        for p in sorted(top_level):
+            subdir_list = [f for f in os.listdir(os.path.join(resdir, p)) if (
+                os.path.isdir(os.path.join(resdir, p, f))) & (not f.startswith('.'))]
+            
+            if len(subdir_list) == 0: # already found the deepest level
+                raise ValueError("Empty or malformed results directory.")
+            
+            else:
+                all_results['results'][p] = pd.DataFrame([d.split('.') for d in subdir_list],
+                                                         columns=['hemi','model','meas'])
+    
     return all_results
 
 
-def detect_terms(resdir, which_model, which_meas):
+def detect_terms(all_results, which_model, which_meas):
 
-    all_results = detect_models(resdir)
+    resdir = all_results['results_directory']
+    resformat = all_results['results_format']
 
     group, model = which_model.split('/')
 
-    check_df = all_results[group]
-    check_df = check_df[check_df.model == model]
+    check_df = all_results['results'][group]
 
-    check_hemis = check_df['hemi'].unique()
+    if resformat == 'verywise':
+        if group != model:
+            check_df = check_df[check_df.model == model]
+            
+            mdir = f'{resdir}/{group}/{model}'
+        else:
+            mdir = f'{resdir}/{group}'
 
-    # Assume you have left and right hemispheres are always run and with the same model
-    mdir = f'{resdir}/{group}/{check_hemis[0]}.{model}.{which_meas}'
-    stacks = pd.read_table(f'{mdir}/stack_names.txt', delimiter="\t")
+    elif resformat == 'QDECR':
+
+        check_df = check_df[check_df.model == model]
+        
+        # Assume you have left and right hemispheres are always run and with the same model
+        check_hemis = check_df['hemi'].unique()
+        mdir = f'{resdir}/{group}/{check_hemis[0]}.{model}.{which_meas}'
+
+    stacks = pd.read_table(os.path.join(mdir, 'stack_names.txt'), delimiter="\t")
 
     out_terms = dict(zip(list(stacks.stack_number)[1:], list(stacks.stack_name)[1:]))
 
     return out_terms
 
 
-def extract_results(resdir, which_model, which_term, which_meas):
+def extract_results(which_model, which_term, which_meas, 
+                    resdir, resformat):
 
     group, model = which_model.split('/')
+
+    if resformat == 'verywise':
+        if group != model:
+            mdir = f'{resdir}/{group}/{model}'
+        else:
+            mdir = f'{resdir}/{group}'
 
     min_beta = []
     max_beta = []
@@ -67,14 +201,19 @@ def extract_results(resdir, which_model, which_term, which_meas):
 
     for hemi in ['left', 'right']:
 
-        mdir = f'{resdir}/{group}/{hemi[0]}h.{model}.{which_meas}'
+        # Read significant cluster map and the full beta maps
+        if resformat == 'QDECR':
+            mdir = os.path.join(resdir, group, f'{hemi[0]}h.{model}.{which_meas}')
 
-        # Read significant cluster map
-        ocn = nb.load(f'{mdir}/stack{which_term}.cache.th30.abs.sig.ocn.mgh')
+            ocn = nb.load(os.path.join(mdir, f'stack{which_term}.cache.th30.abs.sig.ocn.mgh'))
+            coef = nb.load(os.path.join(mdir, f'stack{which_term}.coef.mgh'))
+        
+        elif resformat == 'verywise':
+    
+            ocn = nb.load(os.path.join(mdir, f'{hemi[0]}h.{which_meas}.stack{which_term}.cache.th30.abs.sig.ocn.mgh'))
+            coef = nb.load(os.path.join(mdir, f'{hemi[0]}h.{which_meas}.stack{which_term}.coef.mgh'))
+        
         sign_clusters = np.array(ocn.dataobj).flatten()
-
-        # Read the full beta map
-        coef = nb.load(f'{mdir}/stack{which_term}.coef.mgh')
 
         if not np.any(sign_clusters):  # all zeros = no significant clusters
             betas = np.empty(sign_clusters.shape)
@@ -141,10 +280,11 @@ def calc_betainfo_bycluster(sign_clusters, sign_betas):
 # ----------------------------------------------------------------------------------------------------------------------
 
 
-def compute_overlap(resdir, model1, term1, measure1, model2, term2, measure2):
+def compute_overlap(model1, term1, measure1, model2, term2, measure2, 
+                    resdir, resformat):
 
-    sign_clusters1 = extract_results(resdir, model1, term1, measure1)[4]
-    sign_clusters2 = extract_results(resdir, model2, term2, measure2)[4]
+    sign_clusters1 = extract_results(model1, term1, measure1, resdir, resformat)[4]
+    sign_clusters2 = extract_results(model2, term2, measure2, resdir, resformat)[4]
 
     ovlp_maps = {}
     ovlp_info = {}

@@ -19,10 +19,24 @@ def welcome_page(start_folder, tab_name):
     return ui.nav_panel(
             'Welcome',
             ui.markdown('</br>Welcome to the **verywise WIZARD** app!</br></br>'
+                        ''
                         'Here you can visualize the statistical brain surface maps obtained from your `verywise` '
-                        'analysis in an interactive way.</br>'
-                        'To start, please input the path to the directory where your project results are '
-                        'stored and hit **GO**'),
+                        '(or `QDECR`) analysis in an interactive way.</br>'
+                        'To start, please point us to the location of your project results. '
+                        'This can be:</br>'
+                        '&emsp;⇢ *A path to the results folder*</br>'
+                        '&emsp;&emsp;[this is the fastest, especially if you have a lot of results, '
+                        'but it will only work if you are using the application "offline" (i.e you are running if from your '
+                        'computer)]</br>'
+                        '&emsp;⇢ *A directory inside a (public) github repository*</br>'
+                        '&emsp;&emsp;[this is most flexible but it requires loading all'
+                        'results before getting started so it may take a minute]</br>'
+                        '</br>'
+                        'Hit **GO** to see an overview of the results in the selected folder.</br>'),
+            ui.input_radio_buttons(id='analysis_software', label='Analyses ran using:',
+                                   choices={'QDECR': ui.markdown('`QDECR`'), 
+                                            'verywise': ui.markdown('`verywise`')},
+                                   inline=True, selected='verywise'),
             ui.div(ui.layout_columns(
                  ui.input_text(id='results_folder', label='', value=start_folder),
                  ui.input_action_button(id='go_button',
@@ -45,9 +59,7 @@ def welcome_page(start_folder, tab_name):
             value=tab_name)
 
 
-def describe_input_folder(selected_folder):
-
-    model_dict = detect_models(selected_folder)
+def describe_input_folder(model_dict, selected_folder):
 
     tab_spacing = '&emsp;&emsp;&emsp;'  # space between the "columns"
 
@@ -56,9 +68,9 @@ def describe_input_folder(selected_folder):
                       'thickness': '#FFCCCC'}
 
     info_text = ''
-    for dir in sorted(model_dict.keys()):
+    for dir in sorted(model_dict['results'].keys()):
 
-        sub_dir_df = model_dict[dir]
+        sub_dir_df = model_dict['results'][dir]
 
         sub_text = f'</br>&emsp;**{dir}**<table>'
         for sub_model in sorted(sub_dir_df.model.unique()):
@@ -186,22 +198,30 @@ def single_result_ui():
 
 @module.server
 def update_single_result(input: Inputs, output: Outputs, session: Session,
-                         go, input_resdir) -> tuple:
+                         all_results) -> tuple:
 
-    # resdir = reactive.value(input_resdir)
+    @reactive.Calc
+    def input_resdir():
+        return all_results()['results_directory']
+    
+    @reactive.Calc
+    def input_resformat():
+        return all_results()['results_format']
+
 
     @output
 
     @render.ui
-    @reactive.event(go)
+    # @reactive.event(go)
     def model_ui():
-        all_results = detect_models(input_resdir())
+
         all_models = dict()
-        for m in all_results.keys():
-            sub_models = list(all_results[m]['model'].unique())
+        for m in all_results()['results'].keys():
+           
+            sub_models = list(all_results()['results'][m]['model'].unique())
             # TMP: names are kept as they are
             all_models[m] = dict(zip([f'{m}/{sm}' for sm in sub_models],
-                                     sub_models))
+                                    sub_models))
 
         return ui.input_selectize(
             id='select_model',
@@ -210,12 +230,11 @@ def update_single_result(input: Inputs, output: Outputs, session: Session,
 
     @render.ui
     def measure_ui():
-        all_results = detect_models(input_resdir())
         which_model = input.select_model()
 
         group, model = which_model.split('/')
 
-        group_df = all_results[group]
+        group_df = all_results()['results'][group]
         model_df = group_df[group_df.model == model]
 
         meas_list = list(model_df['meas'].unique())
@@ -237,7 +256,7 @@ def update_single_result(input: Inputs, output: Outputs, session: Session,
     @render.ui
     def term_ui():
 
-        avail_terms = detect_terms(resdir=input_resdir(),
+        avail_terms = detect_terms(all_results=all_results(),
                                    which_model=input.select_model(),
                                    which_meas=input.select_measure())
 
@@ -255,10 +274,11 @@ def update_single_result(input: Inputs, output: Outputs, session: Session,
 
             # Extract results
             min_beta, max_beta, mean_beta, n_clusters, sign_clusters, sign_betas, all_betas = extract_results(
-                resdir=input_resdir(),
                 which_model=input.select_model(),
                 which_term=input.select_term(),
-                which_meas=input.select_measure())
+                which_meas=input.select_measure(),
+                resdir=input_resdir(),
+                resformat=input_resformat())
 
             p.set(2, message="Calculating maps...")
 

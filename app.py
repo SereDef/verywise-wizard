@@ -13,7 +13,14 @@ from definitions.ui_functions import welcome_page, main_results_page, overlap_pa
 
 here = Path(__file__).parent
 
-start_folder = './example_results'
+# start_folder = './example_results'
+# Lorenza (QDECR)
+start_folder = '/Users/Serena/Desktop/PA-brain-project/results'
+# start_folder = 'https://github.com/SereDef/PA-brain-project/tree/main/results'
+
+# Annet (verywise)
+# start_folder = 'https://github.com/SereDef/vw_testing/tree/main/results/'
+# start_folder = '/Users/Serena/Desktop/VW_WIZARD/vw_testing/results'
 
 # ======================================================================================================================
 
@@ -42,28 +49,41 @@ app_ui = ui.page_fillable(
 
 def app_server(input, output, session):
 
-    # TAB 2: MAIN RESULTS
-    model1, term1, measure1 = update_single_result('result1', go=input.go_button, input_resdir=input.results_folder)
-    model2, term2, measure2 = update_single_result('result2', go=input.go_button, input_resdir=input.results_folder)
+    # Extract results from folder or link 
+    @reactive.Calc
+    @reactive.event(input.go_button)
+    def all_results():
+        return detect_models(input.results_folder(), 
+                             results_format=input.analysis_software())
 
-    # TAB 1: FOLDER INFO
+    # TAB 2: MAIN RESULTS  ============================================================
+    model1, term1, measure1 = update_single_result('result1', all_results=all_results)
+    model2, term2, measure2 = update_single_result('result2', all_results=all_results)
+
+    # TAB 1: FOLDER INFO =============================================================
     @output
     @render.text
     @reactive.event(input.go_button)
     def input_folder_info():
-        return describe_input_folder(input.results_folder())
+        return describe_input_folder(model_dict=all_results(), 
+                                     selected_folder=input.results_folder())
     
     @render.image  
     def funders_image():
         img = {"src": here / "www/funders.png", "width": "100%"}  
         return img
 
-    # TAB 3: OVERLAP
+    # TAB 3: OVERLAP  ===============================================================
+    @reactive.Calc
+    def overlap_results():
+        return compute_overlap(model1=model1(), term1=term1(), measure1=measure1(),
+                               model2=model2(), term2=term2(), measure2=measure2(),
+                               resdir=all_results()['results_directory'],
+                               resformat=all_results()['results_format'])
+
     @render.text
     def overlap_info():
-        ovlp_info = compute_overlap(resdir=input.results_folder(),
-                                    model1=model1(), term1=term1(), measure1=measure1(),
-                                    model2=model2(), term2=term2(), measure2=measure2())[0]
+        ovlp_info = overlap_results()[0]
 
         text = {}
         legend = {}
@@ -79,9 +99,7 @@ def app_server(input, output, session):
 
     @reactive.Calc
     def overlap_brain3D():
-        return plot_overlap(resdir=input.results_folder(),
-                            model1=model1(), term1=term1(), measure1=measure1(),
-                            model2=model2(), term2=term2(), measure2=measure2(),
+        return plot_overlap(overlap_maps = overlap_results()[1],
                             surf=input.overlap_select_surface(),
                             resol=input.overlap_select_resolution())
 

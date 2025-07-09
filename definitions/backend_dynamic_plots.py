@@ -104,9 +104,7 @@ def plot_surfmap(min_beta, max_beta, n_clusters, sign_clusters, sign_betas,
 # ---------------------------------------------------------------------------------------------
 
 
-def plot_overlap(resdir, model1, term1, measure1, model2, term2, measure2, surf='pial', resol='fsaverage6'):
-
-    ovlp_maps = compute_overlap(resdir, model1, term1, measure1, model2, term2, measure2)[1]
+def plot_overlap(overlap_maps, surf='pial', resol='fsaverage6'):
 
     fs_avg, n_nodes = fetch_surface(resol)
 
@@ -118,7 +116,7 @@ def plot_overlap(resdir, model1, term1, measure1, model2, term2, measure2, surf=
 
         brain3D[hemi] = plotting.plot_surf(
             surf_mesh=fs_avg[f'{surf}_{hemi}'],  # Surface mesh geometry
-            surf_map=ovlp_maps[hemi][:n_nodes],  # Statistical map
+            surf_map=overlap_maps[hemi][:n_nodes],  # Statistical map
             bg_map=fs_avg[f'sulc_{hemi}'],  # alpha=.2, only in matplotlib
             darkness=0.7,
             hemi=hemi,
