@@ -2,6 +2,7 @@ from pathlib import Path
 from shiny import App, reactive, render, ui
 
 from shinywidgets import render_plotly
+from faicons import icon_svg
 
 import definitions.layout_styles as styles
 from definitions.backend_calculations import detect_models, compute_overlap
@@ -22,18 +23,30 @@ start_folder = '/Users/Serena/Desktop/PA-brain-project/results'
 # start_folder = 'https://github.com/SereDef/vw_testing/tree/main/results/'
 # start_folder = '/Users/Serena/Desktop/VW_WIZARD/vw_testing/results'
 
+vww_blue = '#001f60'
+vww_red = '#95013a'
+vww_grey = '#c7cfe2'
+vww_pink = '#d4acb8'
 # ======================================================================================================================
 
 app_ui = ui.page_fillable(
     ui.page_navbar(
         # ui.nav_spacer(),
         welcome_page(start_folder, tab_name='welcome_tab'),
-
         main_results_page(tab_name='main_tab'),
-
         overlap_page(tab_name='overlap_tab'),
 
-        title=ui.img(src='vwwizard_logo.png', alt='verywise wizard logo', height='150px'),
+        ui.nav_spacer(),  # Pushes the next item(s) to the right
+        ui.nav_control(
+            ui.a(
+                icon_svg("github", fill=vww_blue, width="26px", height="26px"),
+                href="https://github.com/SereDef/verywise-wizard",
+                target="_blank",
+                style="margin-left: 20px; vertical-align: top;"
+            )
+        ),
+
+        title=ui.img(src='vwwizard_logo.png', alt='verywise wizard logo', height='140px'),
         selected='welcome_tab',
         position='fixed-top',
         fillable=True,

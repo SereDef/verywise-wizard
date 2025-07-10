@@ -319,7 +319,7 @@ def update_single_result(input: Inputs, output: Outputs, session: Session,
 
                 p.set(5, message="...almost done!")
 
-        return info, brains, legend_plot
+        return info, brains, legend_plot, sign_betas, all_betas
 
     @render.text
     def info():
@@ -340,10 +340,10 @@ def update_single_result(input: Inputs, output: Outputs, session: Session,
     def color_legend():
         return single_result_output()[2]
 
-    @render.download(filename=f"Brainmapp_figure.png")
+    @render.download(filename=f"verywise_figure.png")
     def download_figure_button():
-        stat_fig = plot_brain_2d(start_folder=input_resdir(),
-                                 outc=input.select_pheno(),
+        stat_fig = plot_brain_2d(sign_betas = single_result_output()[3], 
+                                 all_observed_betas = single_result_output()[4],
                                  model=input.select_model(),
                                  meas=input.select_measure(),
                                  resol=input.select_resolution(),

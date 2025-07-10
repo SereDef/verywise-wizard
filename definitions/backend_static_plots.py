@@ -9,7 +9,7 @@ from matplotlib.colors import ListedColormap
 
 from scipy.stats import gaussian_kde
 
-from definitions.backend_calculations import detect_models, extract_results, calc_betainfo_bycluster, fetch_surface
+from definitions.backend_calculations import calc_betainfo_bycluster, fetch_surface, fetch_cont_colormap
 
 
 # ===== BETA AND CLUSTER LEGENDS FOR APP ==============================================================
@@ -32,25 +32,27 @@ def plot_beta_colorbar_density(ax1, ax2, sign_betas, all_betas, colorblind=False
     min_sign_beta = np.nanmin(sign_betas)
     max_sign_beta = np.nanmax(sign_betas)
 
+    cmap, thresh = fetch_cont_colormap(stats_map = sign_betas,
+                                       max_val = max_sign_beta,
+                                       min_val = min_sign_beta, 
+                                       colorblind = False)
+    
     lspace = np.linspace(min_obs_beta, max_obs_beta, 200)
     color_where = (lspace > min_sign_beta) & (lspace < max_sign_beta)
 
-    blank_middle = False
-
-    if max_sign_beta < 0 and min_sign_beta < 0:  # all negative associations
-        cmap = 'viridis'
-    elif max_sign_beta > 0 and min_sign_beta > 0:  # all positive associations
-        cmap = 'viridis_r' if colorblind else 'hot_r'
+    if isinstance(cmap, str) and cmap in ['viridis_r', 'viridis','hot_r']: # all in one direction
+        blank_middle = False
+        cmap = mpl.colormaps[cmap]  # convert to colormap object
     else:
-        cmap = 'viridis' # TODO: could pick a diverging map for this one instead (rare though)
         blank_middle = True
-        thresh = np.nanmin(abs(sign_betas))
-        color_where = (lspace > thresh) | (lspace < -thresh)
+        # color_where =  None # (lspace > thresh) | (lspace < -thresh)
+        # fill_betweenx does not support non-contiguous regions in a single call so I will just draw a 
+        # white polygon on top
 
     # PLOT 1: COLORBAR -------------------------------------------------------------------------------
 
     cb1 = mpl.colorbar.ColorbarBase(ax1,
-                                    cmap=mpl.colormaps[cmap],
+                                    cmap=cmap,
                                     norm=mpl.colors.Normalize(vmin=min_sign_beta, vmax=max_sign_beta),
                                     orientation='vertical', ticklocation='left')
 
@@ -59,6 +61,7 @@ def plot_beta_colorbar_density(ax1, ax2, sign_betas, all_betas, colorblind=False
     # tickform = '{:.1e}' if tickstep < 0.01 else '{:.2f}'
     # cb1.set_ticks(ticks, labels=[tickform.format(i) if i != 0 else '0.00' for i in ticks], fontsize=12)
     cb1.set_label(r'Observed $\beta$ values', fontsize=10, labelpad=5)
+    cb1.ax.yaxis.label.set_zorder(10)  # Ensure label is displayed on top
 
     # Include central threshold for maps with both positive and negative values
     if blank_middle:
@@ -74,7 +77,7 @@ def plot_beta_colorbar_density(ax1, ax2, sign_betas, all_betas, colorblind=False
     density = gaussian_kde(obs_betas)
 
     # Density line
-    ax2.plot(density(lspace), lspace, lw=0.5, alpha=0.3, color='k')
+    ax2.plot(density(lspace), lspace, lw=0.5, alpha=0.3, color='k', zorder=2)
 
     # Color significant portion
     polygon = ax2.fill_betweenx(y=lspace, x1=density(lspace), where=color_where, lw=0, color='none')
@@ -86,6 +89,10 @@ def plot_beta_colorbar_density(ax1, ax2, sign_betas, all_betas, colorblind=False
     gradient.set_clip_path(polygon.get_paths()[0], transform=ax2.transData)
 
     ax2.axhline(y=0, dashes=(20, 5), lw=0.2, alpha=0.3, color='k')
+
+    if blank_middle:
+        # Draw a white rectangle over the non-significant region
+        ax2.axhspan(-thresh, thresh, facecolor='white', alpha=1, zorder=1)
 
     if set_range == None:
         ax2.set_ylim(min_obs_beta - pad, max_obs_beta + pad)
@@ -194,13 +201,11 @@ def plot_single_brain(ax, hemi, coord, fig, sign_betas, surf='pial', resol='fsav
     min_sign_beta = np.nanmin(stats_map)
     max_sign_beta = np.nanmax(stats_map)
 
-    if max_sign_beta < 0 and min_sign_beta < 0:  # all negative associations
-        cmap = 'viridis'
-    elif max_sign_beta > 0 and min_sign_beta > 0:  # all positive associations
-        cmap = 'viridis_r' if colorblind else 'hot_r'
-    else:
-        cmap = 'viridis' # TODO: could pick a diverging map for this one instead (rare though)
-
+    
+    cmap, thresh = fetch_cont_colormap(stats_map=stats_map,
+                                       max_val=max_sign_beta,
+                                       min_val=min_sign_beta,
+                                       colorblind=colorblind)
 
     p = plotting.plot_surf(surf_mesh=fs_avg[f'{surf}_{hemi}'],  # Surface mesh geometry
                            surf_map=stats_map[:n_nodes],  # Statistical map confounder model
@@ -217,13 +222,12 @@ def plot_single_brain(ax, hemi, coord, fig, sign_betas, surf='pial', resol='fsav
     return p
 
 
-def plot_brain_2d(start_folder, outc, model, meas, resol='fsaverage5', title=None):
+def plot_brain_2d(sign_betas, all_observed_betas, 
+                 model, meas, resol='fsaverage5', title=None):
 
     title = f'{model} ({meas})' if title == None else title
 
-    print("Computing figure")
-
-    _, _, _, _, _, sign_betas, all_observed_betas = extract_results(start_folder, outc, model, meas)
+    print("Computing figure...")
 
     fig, axs = plt.subplot_mosaic('ABCDD..a.b;EFG.HH.a.b', figsize=(12, 7),
                                   per_subplot_kw={('ABCDEFGH'): {'projection': '3d'}},
@@ -258,6 +262,7 @@ def plot_brain_2d(start_folder, outc, model, meas, resol='fsaverage5', title=Non
     axs['F'].set_ylim3d(-128, 50)
 
     plot_beta_colorbar_density(axs['a'], axs['b'], sign_betas, all_observed_betas)
+    axs['a'].set_zorder(10) # Display label on top
 
     # axs['C'].set_ylim3d(-118, 60); # axs['C'].set_zlim3d(-118, 60)
 
@@ -284,19 +289,19 @@ def plot_brain_2d(start_folder, outc, model, meas, resol='fsaverage5', title=Non
     x_2a = x_2b = x_2 - 0.06
     x_3a, x_3b = x_3 - 0.045, x_3 + 0.045
 
-    fig.text(x_1a, y_top, "L", lkargs);
+    fig.text(x_1a, y_top, "L", lkargs)
     fig.text(x_1b, y_top, "R", lkargs)
-    fig.text(x_1a, y_bot, "L", lkargs);
+    fig.text(x_1a, y_bot, "L", lkargs)
     fig.text(x_1b, y_bot, "R", lkargs)
 
-    fig.text(x_2a, y_top, "L", lkargs);
+    fig.text(x_2a, y_top, "L", lkargs)
     fig.text(x_2b, y_top - 0.18, "R", lkargs)
-    fig.text(x_2a, y_bot, "L", lkargs);
+    fig.text(x_2a, y_bot, "L", lkargs)
     fig.text(x_2b, y_bot - 0.18, "R", lkargs)
 
-    fig.text(x_3a, y_top, "L", lkargs);
+    fig.text(x_3a, y_top, "L", lkargs)
     fig.text(x_3b, y_top, "R", lkargs)
-    fig.text(x_3a, y_bot, "R", lkargs);
+    fig.text(x_3a, y_bot, "R", lkargs)
     fig.text(x_3b, y_bot, "L", lkargs)
 
     return fig

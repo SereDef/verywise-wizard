@@ -3,7 +3,7 @@ import numpy as np
 from nilearn import plotting
 from matplotlib.colors import ListedColormap
 
-from definitions.backend_calculations import fetch_surface, fetch_discr_colormap, compute_overlap
+from definitions.backend_calculations import fetch_surface, fetch_cont_colormap, fetch_discr_colormap
 import definitions.layout_styles as styles
 
 
@@ -52,14 +52,16 @@ def plot_surfmap(min_beta, max_beta, n_clusters, sign_clusters, sign_betas,
         if output == 'clusters':
             stats_map = sign_clusters[hemi]
 
-            cmap = fetch_discr_colormap(hemi, int(n_clusters[nh]), int(n_clusters[0]+n_clusters[1]))
+            max_val = n_clusters[nh]
+            min_val = 1
+
+            thresh = 1
+            cmap = fetch_discr_colormap(hemi, 
+                                        int(n_clusters[nh]), 
+                                        int(n_clusters[0]+n_clusters[1]))
 
             if n_clusters[nh] != cmap.N:
                 print(hemi, n_clusters[nh], cmap.N)
-
-            max_val = n_clusters[nh]
-            min_val = 1
-            thresh = 1
 
         else:
             stats_map = sign_betas[hemi]
@@ -67,18 +69,11 @@ def plot_surfmap(min_beta, max_beta, n_clusters, sign_clusters, sign_betas,
             max_val = max_beta
             min_val = min_beta
 
-            if max_val < 0 and min_val < 0:  # all negative associations
-                thresh = max_val
-                cmap = 'viridis'
-            elif max_val > 0 and min_val > 0:  # all positive associations
-                thresh = min_val
-                cmap = 'viridis_r' if colorblind else 'hot_r'
-            else:
-                thresh = np.nanmin(abs(stats_map))
-                cmap = 'viridis' # TODO: could pick a diverging map for this one instead (rare though)
-
-            # cmap = styles.BETA_COLORMAP
-
+            cmap, thresh = fetch_cont_colormap(stats_map = stats_map,
+                                               max_val = max_val,
+                                               min_val = min_val,
+                                               colorblind = colorblind)
+           
         brain3D[hemi] = plotting.plot_surf(
                 surf_mesh=fs_avg[f'{surf}_{hemi}'],  # Surface mesh geometry
                 surf_map=stats_map[:n_nodes],  # Statistical map

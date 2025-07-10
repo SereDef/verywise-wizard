@@ -3,3 +3,5 @@
 .Rhistory
 __pycache__/
 definitions/__pycache__/
+.venv/
+definitions/dev.ipynb

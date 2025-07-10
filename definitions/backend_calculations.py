@@ -199,20 +199,34 @@ def extract_results(which_model, which_term, which_meas,
     sign_betas_left_right = {}
     all_observed_betas_left_right = {}
 
+    missing_hemis = []
+
     for hemi in ['left', 'right']:
 
+        try:
         # Read significant cluster map and the full beta maps
-        if resformat == 'QDECR':
-            mdir = os.path.join(resdir, group, f'{hemi[0]}h.{model}.{which_meas}')
+            if resformat == 'QDECR':
+                mdir = os.path.join(resdir, group, f'{hemi[0]}h.{model}.{which_meas}')
 
-            ocn = nb.load(os.path.join(mdir, f'stack{which_term}.cache.th30.abs.sig.ocn.mgh'))
-            coef = nb.load(os.path.join(mdir, f'stack{which_term}.coef.mgh'))
+                ocn = nb.load(os.path.join(mdir, f'stack{which_term}.cache.th30.abs.sig.ocn.mgh'))
+                coef = nb.load(os.path.join(mdir, f'stack{which_term}.coef.mgh'))
+            
+            elif resformat == 'verywise':
         
-        elif resformat == 'verywise':
-    
-            ocn = nb.load(os.path.join(mdir, f'{hemi[0]}h.{which_meas}.stack{which_term}.cache.th30.abs.sig.ocn.mgh'))
-            coef = nb.load(os.path.join(mdir, f'{hemi[0]}h.{which_meas}.stack{which_term}.coef.mgh'))
-        
+                ocn = nb.load(os.path.join(mdir, f'{hemi[0]}h.{which_meas}.stack{which_term}.cache.th30.abs.sig.ocn.mgh'))
+                coef = nb.load(os.path.join(mdir, f'{hemi[0]}h.{which_meas}.stack{which_term}.coef.mgh'))
+        except FileNotFoundError as e:
+            missing_hemis.append(hemi)
+            # Fill with NAs for this hemisphere
+            sign_clusters_left_right[hemi] = np.array([])
+            sign_betas_left_right[hemi] = np.array([])
+            all_observed_betas_left_right[hemi] = np.array([])
+            min_beta.append(np.nan)
+            max_beta.append(np.nan)
+            med_beta.append(np.nan)
+            n_clusters.append(0)
+            continue
+
         sign_clusters = np.array(ocn.dataobj).flatten()
 
         if not np.any(sign_clusters):  # all zeros = no significant clusters
@@ -239,6 +253,11 @@ def extract_results(which_model, which_term, which_meas,
         sign_clusters_left_right[hemi] = sign_clusters
         sign_betas_left_right[hemi] = betas
         all_observed_betas_left_right[hemi] = np.array(coef.dataobj).flatten()
+    
+    if missing_hemis:
+        raise FileNotFoundError(
+            f'Could not find result files for the {" nor the ".join(missing_hemis)} hemisphere. '
+            'Please check your results directory for missing or corrupted files.')
 
     return np.nanmin(min_beta), np.nanmax(max_beta), np.nanmean(med_beta), n_clusters, \
            sign_clusters_left_right, sign_betas_left_right, all_observed_betas_left_right
@@ -323,6 +342,32 @@ def fetch_surface(resolution):
                'fsaverage5': 10242}
 
     return datasets.fetch_surf_fsaverage(mesh=resolution), n_nodes[resolution]
+
+
+def fetch_cont_colormap(stats_map,
+                        max_val = 1,
+                        min_val = -1, 
+                        colorblind = True):
+
+    if max_val < 0 and min_val < 0:  # all negative associations
+        thresh = max_val
+        cmap = 'viridis'
+    elif max_val > 0 and min_val > 0:  # all positive associations
+        thresh = min_val
+        cmap = 'viridis_r' if colorblind else 'hot_r'
+    else:
+        # Diverging associations: create a custom colormap from hot_r (left) to viridis (right)
+        thresh = np.nanmin(abs(stats_map))
+        # Sample colors from hot_r (left side) and viridis (right side)
+        hot_r = mpl.colormaps['hot_r'](np.linspace(0, 1, 128))
+        viridis = mpl.colormaps['viridis'](np.linspace(0, 1, 128))
+        # Stack: hot_r for negative, viridis for positive
+        colors = np.vstack((viridis, hot_r))
+        cmap = mpl.colors.LinearSegmentedColormap.from_list('hot_r_viridis', colors)
+        # cmap = 'viridis'
+
+    return(cmap, thresh)
+
 
 
 def fetch_discr_colormap(hemi, n_clusters, tot_clusters):
