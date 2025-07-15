@@ -200,7 +200,6 @@ def plot_single_brain(ax, hemi, coord, fig, sign_betas, surf='pial', resol='fsav
 
     min_sign_beta = np.nanmin(stats_map)
     max_sign_beta = np.nanmax(stats_map)
-
     
     cmap, thresh = fetch_cont_colormap(stats_map=stats_map,
                                        max_val=max_sign_beta,

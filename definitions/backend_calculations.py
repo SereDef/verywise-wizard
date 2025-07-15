@@ -4,7 +4,6 @@ import numpy as np
 import pandas as pd
 import warnings
 
-
 from nilearn import datasets
 import nibabel as nb
 
@@ -215,6 +214,7 @@ def extract_results(which_model, which_term, which_meas,
         
                 ocn = nb.load(os.path.join(mdir, f'{hemi[0]}h.{which_meas}.stack{which_term}.cache.th30.abs.sig.ocn.mgh'))
                 coef = nb.load(os.path.join(mdir, f'{hemi[0]}h.{which_meas}.stack{which_term}.coef.mgh'))
+        
         except FileNotFoundError as e:
             missing_hemis.append(hemi)
             # Fill with NAs for this hemisphere
