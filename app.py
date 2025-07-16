@@ -14,9 +14,9 @@ from definitions.ui_functions import welcome_page, main_results_page, overlap_pa
 
 here = Path(__file__).parent
 
-# start_folder = './example_results'
+start_folder = './example_results'
 # Lorenza (QDECR)
-start_folder = '/Users/Serena/Desktop/PA-brain-project/results'
+# start_folder = '/Users/Serena/Desktop/PA-brain-project/results'
 # start_folder = 'https://github.com/SereDef/PA-brain-project/tree/main/results'
 
 # Annet (verywise)
