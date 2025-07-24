@@ -1,4 +1,4 @@
-ffaicons==0.2.2
+faicons==0.2.2
 matplotlib==3.8.2
 nibabel==5.2.0
 nilearn==0.10.3
