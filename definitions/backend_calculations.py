@@ -3,6 +3,7 @@ import re
 import numpy as np
 import pandas as pd
 import warnings
+from pathlib import Path
 
 from nilearn import datasets
 import nibabel as nb
@@ -13,6 +14,8 @@ from matplotlib.colors import ListedColormap
 from shiny import ui
 
 import definitions.layout_styles as styles
+
+here = Path(__file__).parent
 
 # ===== DATA PROCESSING FUNCTIONS ==============================================================
 
@@ -27,9 +30,9 @@ def resolve_resdir(resdir):
         return download_github_folder(resdir)
     
     # (Handle other cases: zip, repo, etc.)
-    raise ValueError("Unsupported path format")
+    raise ValueError("Folder specified in path does not exist")
 
-def download_github_folder(github_url, github_token=None, GITHUB_FOLDER_CACHE = {}):
+def download_github_folder(github_url, download_loc = here, github_token=None, GITHUB_FOLDER_CACHE = {}):
     """
     Downloads a folder from a public GitHub repo to a temp directory.
     github_url: e.g. https://github.com/user/repo/tree/main/path/to/folder
@@ -48,8 +51,8 @@ def download_github_folder(github_url, github_token=None, GITHUB_FOLDER_CACHE = 
     user, repo, branch, folder_path = m.groups()
 
     api_url = f"https://api.github.com/repos/{user}/{repo}/contents/{folder_path}?ref={branch}"
-    tmp_dir = tempfile.mkdtemp()
-    folder_local = os.path.join(tmp_dir, os.path.basename(folder_path))
+    # tmp_dir = .mkdtemp()
+    folder_local = os.path.join(download_loc, '..', os.path.basename(folder_path))
     os.makedirs(folder_local, exist_ok=True)
 
     headers = {}

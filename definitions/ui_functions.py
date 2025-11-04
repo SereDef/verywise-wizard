@@ -29,8 +29,12 @@ def welcome_page(start_folder, tab_name):
                         'but it will only work if you are using the application "offline" (i.e you are running if from your '
                         'computer)]</br>'
                         '&emsp;⇢ *A directory inside a (public) github repository*</br>'
-                        '&emsp;&emsp;[this is most flexible but it requires loading all'
+                        '&emsp;&emsp;[this is most flexible but it requires loading all '
                         'results before getting started so it may take a minute]</br>'
+                        'A word of advice? If you have *a lot* of result files (e.g. you have run a '
+                        'bunch of models or models with lots of covariates) you are probably better '
+                        'off downloading them and running the app "offline". See the instructions on '
+                        'the GitHub repo (top right corner).'
                         '</br>'
                         'Hit **GO** to see an overview of the results in the selected folder.</br>'),
             ui.input_radio_buttons(id='analysis_software', label='Analyses ran using:',

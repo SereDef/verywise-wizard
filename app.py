@@ -21,7 +21,7 @@ start_folder = './example_results'
 
 # Annet (verywise)
 # start_folder = 'https://github.com/SereDef/vw_testing/tree/main/results/'
-start_folder = '/Users/Serena/Desktop/annet/longi-ADHD-brain/results'
+# start_folder = '/Users/Serena/Desktop/annet/longi-ADHD-brain/results'
 
 vww_blue = '#001f60'
 vww_red = '#95013a'
