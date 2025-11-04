@@ -359,11 +359,27 @@ def fetch_cont_colormap(stats_map,
         # Diverging associations: create a custom colormap from hot_r (left) to viridis (right)
         thresh = np.nanmin(abs(stats_map))
         # Sample colors from hot_r (left side) and viridis (right side)
-        hot_r = mpl.colormaps['hot_r'](np.linspace(0, 1, 128))
-        viridis = mpl.colormaps['viridis'](np.linspace(0, 1, 128))
+        # hot_r = mpl.colormaps['hot_r'](np.linspace(0, 1, 128))
+        # viridis = mpl.colormaps['viridis'](np.linspace(0, 1, 128))
+
+        hot_r = mpl.colormaps['hot_r']
+        viridis = mpl.colormaps['viridis']
+
+        # Extract key colors
+        c_hot_dark   = hot_r(1.0)   # darkest red
+        c_viridis_light = viridis(1.0)  # yellow
+        c_viridis_dark  = viridis(0.0)  # dark blue 
+
+        # Build continuous colormap from these anchors
+        colors = [viridis(0.0), viridis(0.5), viridis(1.0), hot_r(0.5), hot_r(0.75), hot_r(1.0)]
+        nodes = [0.0, 0.25, 0.5, 0.6, 0.75, 1.0]  # positions of these colors
+
+        cmap = mpl.colors.LinearSegmentedColormap.from_list(
+            "hot_r_viridis", list(zip(nodes, colors))
+        )
         # Stack: hot_r for negative, viridis for positive
-        colors = np.vstack((viridis, hot_r))
-        cmap = mpl.colors.LinearSegmentedColormap.from_list('hot_r_viridis', colors)
+        # colors = np.vstack((viridis, hot_r))
+        # cmap = mpl.colors.LinearSegmentedColormap.from_list('hot_r_viridis', colors)
         # cmap = 'viridis'
 
     return(cmap, thresh)
