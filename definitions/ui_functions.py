@@ -5,8 +5,8 @@ from shinywidgets import output_widget, render_plotly
 import io
 
 import definitions.layout_styles as styles
-from definitions.backend_calculations import detect_models, detect_terms, extract_results, compute_overlap
-from definitions.backend_dynamic_plots import plot_surfmap, plot_overlap
+from definitions.backend_calculations import detect_terms, extract_results
+from definitions.backend_dynamic_plots import plot_surfmap
 from definitions.backend_static_plots import beta_colorbar_density_figure, clusterwise_means_figure, plot_brain_2d
 
 
@@ -83,7 +83,7 @@ def describe_input_folder(model_dict, selected_folder):
 
             # Extract the outcomes (measures) examines in each model
             avail_meas = sorted(sub_mod_df.meas.unique())
-            avail_meas_text = f'</br>{tab_spacing}'.join(f'<span style="background-color:{outcome_colors[meas]};'
+            avail_meas_text = f'</br>{tab_spacing}'.join(f'<span style="background-color:#FFFFCC;' # {outcome_colors[meas]}
                                                          f'border-radius:16px;">'
                                                          f' {meas}&nbsp;</span>' for meas in avail_meas)
 

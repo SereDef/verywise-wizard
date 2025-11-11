@@ -38,8 +38,8 @@ def download_github_folder(github_url, download_loc = here, github_token=None, G
     github_url: e.g. https://github.com/user/repo/tree/main/path/to/folder
     Returns the local path to the downloaded folder.
     """
-    import tempfile
     import requests
+    import shutil
 
     # Check cache first
     if github_url in GITHUB_FOLDER_CACHE:
@@ -52,8 +52,12 @@ def download_github_folder(github_url, download_loc = here, github_token=None, G
 
     api_url = f"https://api.github.com/repos/{user}/{repo}/contents/{folder_path}?ref={branch}"
     # tmp_dir = .mkdtemp()
-    folder_local = os.path.join(download_loc, '..', os.path.basename(folder_path))
-    os.makedirs(folder_local, exist_ok=True)
+    folder_local = Path(download_loc) / 'tmp'
+    
+    if folder_local.exists() and folder_local.is_dir():
+        shutil.rmtree(folder_local, ignore_errors=True)
+    
+    os.makedirs(folder_local)
 
     headers = {}
     # Try to get token from environment if not provided
