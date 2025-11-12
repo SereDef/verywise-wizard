@@ -66,11 +66,6 @@ def welcome_page(start_folder, tab_name):
 def describe_input_folder(model_dict, selected_folder):
 
     tab_spacing = '&emsp;&emsp;&emsp;'  # space between the "columns"
-
-    # TODO: complete this and move to styles
-    outcome_colors = {'area': '#FFFFCC',
-                      'thickness': '#FFCCCC'}
-
     info_text = ''
     for dir in sorted(model_dict['results'].keys()):
 
@@ -83,7 +78,7 @@ def describe_input_folder(model_dict, selected_folder):
 
             # Extract the outcomes (measures) examines in each model
             avail_meas = sorted(sub_mod_df.meas.unique())
-            avail_meas_text = f'</br>{tab_spacing}'.join(f'<span style="background-color:#FFFFCC;' # {outcome_colors[meas]}
+            avail_meas_text = f'</br>{tab_spacing}'.join(f'<span style="background-color:{styles.measure_colors[meas]};'
                                                          f'border-radius:16px;">'
                                                          f' {meas}&nbsp;</span>' for meas in avail_meas)
 
@@ -243,13 +238,7 @@ def update_single_result(input: Inputs, output: Outputs, session: Session,
 
         meas_list = list(model_df['meas'].unique())
 
-        # TODO: clean all the measure names
-        clean_names = {'thickness': 'Thickness',
-                       'area': 'Surface area',
-                       'curv': 'Curvature',
-                       'w_g.pct': 'Grey-white ratio'}
-
-        avail_measures = {key: clean_names[key] for key in meas_list}
+        avail_measures = {key: styles.measure_names[key] for key in meas_list}
 
         return ui.input_selectize(
             id='select_measure',

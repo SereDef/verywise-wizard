@@ -52,7 +52,7 @@ def download_github_folder(github_url, download_loc = here, github_token=None, G
 
     api_url = f"https://api.github.com/repos/{user}/{repo}/contents/{folder_path}?ref={branch}"
     # tmp_dir = .mkdtemp()
-    folder_local = Path(download_loc) / 'tmp'
+    folder_local = Path(download_loc) / 'tmp' # todo folder name
     
     if folder_local.exists() and folder_local.is_dir():
         shutil.rmtree(folder_local, ignore_errors=True)
@@ -98,6 +98,47 @@ def download_github_folder(github_url, download_loc = here, github_token=None, G
     return folder_local
 
 
+def parse_directory_structure(resdir):
+    """Recursively find all .mgh files in a directory, including nested directories."""
+    files = []
+    for root, dirs, filenames in os.walk(resdir):
+        for filename in filenames:
+            if filename.endswith('coef.mgh'):
+                files.append(os.path.join(root, filename))
+    return files
+
+
+def parse_verywise_filenames(d, special_meas_names = ['area.pial', 'w_g.pct', 'white.H', 'white.K']):
+    
+    parts = d.split('.')
+
+    hemi = parts[0]
+    
+    # Check if the second element (index 1) is in the special list
+    if '.'.join(parts[1:3]) in special_meas_names:
+        meas = '.'.join(parts[1:3])
+    else:
+        meas = parts[1]
+    
+    return hemi, meas
+
+def parse_qdecr_filenames(d, special_meas_names = ['area.pial', 'w_g.pct', 'white.H', 'white.K']):
+    
+    parts = d.split('.')
+
+    hemi = parts[0]
+    model = parts[1]
+    meas = parts[2]
+
+    if len(parts) > 3:
+        if '.'.join(parts[2:4]) in special_meas_names:
+            meas =  '.'.join(parts[2:4])
+        else:
+            raise ValueError(f"Incorrect (QDECR) project name. {parts}")
+    
+    return model, hemi, meas
+
+
 def detect_models(resdir, results_format):
 
     resdir = resolve_resdir(resdir)
@@ -107,49 +148,46 @@ def detect_models(resdir, results_format):
                    'results_format': results_format,
                    'results': {}}
 
-    top_level = [f for f in os.listdir(resdir) if not f.startswith('.')]
+    all_files = parse_directory_structure(resdir)
 
+    if not all_files:
+        raise ValueError("No .mgh files found in the specified directory.")
+
+    # top_level = [f for f in os.listdir(resdir) if os.path.isdir(f'{resdir}/{f}') and not f.startswith('.')]
+    res = pd.DataFrame(columns=['group', 'model', 'hemi', 'meas'])
+    
     if results_format == 'verywise':
 
-        for p in sorted(top_level):
-            subdir_list = [f for f in os.listdir(os.path.join(resdir, p)) if (
-                os.path.isdir(os.path.join(resdir, p, f))) & (not f.startswith('.'))]
-            
-            if len(subdir_list) == 0: # already found the deepest level
+        for file_path in all_files:
+            parent_dir = os.path.dirname(file_path)
+            file_name = os.path.basename(file_path)
 
-                res = pd.DataFrame([d.split('.')[:2] for d in os.listdir(os.path.join(resdir, p)) if (
-                    d.endswith('.mgh'))],
-                    columns=['hemi', 'meas']).drop_duplicates()
-                
-                res['model'] = p
-                all_results['results'][p] = res
-
+            if parent_dir == resdir: 
+                model = os.path.basename(parent_dir)
             else:
-                subdir_res = pd.DataFrame()
-                
-                for subdir in subdir_list:
-                    res = pd.DataFrame([d.split('.')[:2] for d in os.listdir(os.path.join(resdir, p, subdir)) if (
-                        d.endswith('.mgh'))],
-                        columns=['hemi', 'meas']).drop_duplicates()
-                    
-                    res['model'] = subdir
-                    subdir_res = pd.concat([subdir_res, res])
-                
-                all_results['results'][p] = subdir_res
+                model = parent_dir.replace(f'{resdir}/', '')
+
+            hemi, meas = parse_verywise_filenames(file_name)  # Extract hemi and meas from filename
+
+            res = pd.concat([res, pd.DataFrame(dict(group=[model], model=[model], hemi=[hemi], meas=[meas]))],
+                             ignore_index=True)
     
     elif results_format == 'QDECR': #TODO: adapt this to all QDECR formats
 
-        for p in sorted(top_level):
-            subdir_list = [f for f in os.listdir(os.path.join(resdir, p)) if (
-                os.path.isdir(os.path.join(resdir, p, f))) & (not f.startswith('.'))]
-            
-            if len(subdir_list) == 0: # already found the deepest level
-                raise ValueError("Empty or malformed results directory.")
-            
-            else:
-                all_results['results'][p] = pd.DataFrame([d.split('.') for d in subdir_list],
-                                                         columns=['hemi','model','meas'])
-    
+         for file_path in all_files:
+            parent_dir = os.path.dirname(file_path)
+            file_name = os.path.basename(file_path)
+
+            model, hemi, meas = parse_qdecr_filenames(os.path.basename(parent_dir))
+            group = os.path.dirname(parent_dir.replace(f'{resdir}/', ''))
+
+            res = pd.concat([res, pd.DataFrame(dict(group=[group], model=[model], hemi=[hemi], meas=[meas]))],
+                             ignore_index=True)
+
+    res = res.drop_duplicates()
+
+    all_results['results'] = {group: data for group, data in res.groupby('group')}
+
     return all_results
 
 

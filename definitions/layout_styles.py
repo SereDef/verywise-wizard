@@ -14,6 +14,30 @@ SELECTION_PANE = f'padding-top: 10px; padding-right: 20px; padding-left: 20px; '
 
 INFO_MESSAGE = 'text-align: center; padding-top: 10px; padding-bottom: 10px'
 
+measure_names = {'thickness': 'Thickness',
+                 'area': 'Surface area',
+                 'area.pial': 'Surface area (pial)',
+                 'curv': 'Curvature',
+                 'jacobian_white': 'Jacobian determinant (white)',
+                 'pial_lgi': 'Local gyrification index (pial)',
+                 'sulc': 'Sulcal depth',
+                 'volume': 'Gray matter volume',
+                 'w_g.pct': 'White/gray matter contrast',
+                 'white.H': 'Mean curvature (white)',
+                 'white.K': 'Gaussian curvature (white)'}
+
+measure_colors = {'thickness': '#FFCCCC',
+                 'area': '#FFFFCC',
+                 'area.pial': '#FFFFCC',
+                 'curv': '#d8f3dc',
+                 'jacobian_white': '#fff0f3',
+                 'pial_lgi': '#fae0e4',
+                 'sulc': '#fff0f3',
+                 'volume': '#d9d9d9',
+                 'w_g.pct': '#edf2fb',
+                 'white.H': '#d8f3dc',
+                 'white.K': '#d8f3dc'}
+
 # ------ PLOTTING ------------
 BETA_COLORMAP = 'viridis'
 CLUSTER_COLORMAP = 'turbo'
