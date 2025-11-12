@@ -32,7 +32,7 @@ def resolve_resdir(resdir):
     # (Handle other cases: zip, repo, etc.)
     raise ValueError("Folder specified in path does not exist")
 
-def download_github_folder(github_url, download_loc = here, github_token=None, GITHUB_FOLDER_CACHE = {}):
+def download_github_folder(github_url, download_loc = here.parent, github_token=None, GITHUB_FOLDER_CACHE = {}):
     """
     Downloads a folder from a public GitHub repo to a temp directory.
     github_url: e.g. https://github.com/user/repo/tree/main/path/to/folder
@@ -52,7 +52,7 @@ def download_github_folder(github_url, download_loc = here, github_token=None, G
 
     api_url = f"https://api.github.com/repos/{user}/{repo}/contents/{folder_path}?ref={branch}"
     # tmp_dir = .mkdtemp()
-    folder_local = Path(download_loc) / 'tmp' # todo folder name
+    folder_local = Path(download_loc) / 'tmp_results' # todo folder name
     
     if folder_local.exists() and folder_local.is_dir():
         shutil.rmtree(folder_local, ignore_errors=True)
