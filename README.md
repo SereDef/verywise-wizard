@@ -30,7 +30,7 @@ uv run shiny run --launch-browser app.py
 <details>
 <summary><b>Using <code>pip</code></b></summary>
 
-`requirements.txt` is generated from `pyproject.toml`, so it pins the same versions:
+> `requirements.txt` is generated from `pyproject.toml`, so it pins the same versions:
 ```
 pip install -r requirements.txt
 
@@ -38,9 +38,6 @@ shiny run --launch-browser app.py
 ```
 </details>
 
-> After changing a dependency in `pyproject.toml`, regenerate `requirements.txt` with
-> `uv export --no-hashes --no-dev --no-emit-project -o requirements.txt`
-> (the deployed app reads that file).
 
 ## Funders  
 <img src="www/funders.png" height="100" alt="Funders"/>

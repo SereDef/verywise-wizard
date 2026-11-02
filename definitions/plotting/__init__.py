@@ -28,11 +28,11 @@ from .cameras import VIEWS, VeryWiseCameraPresets
 from .colormap import VeryWiseColormap, threshold, to_array
 from .layout import VeryWiseLayout
 from .mesh import BG_MAPS, FS_TEMPLATES, SURFACES, VeryWiseMesh
-from .panels import CLUSTERS, DENSITY, side_panel_figure
+from .panels import CLUSTERS, COLORBAR, DENSITY, side_panel_figure
 from .plotters import VeryWiseInteractivePlotter, VeryWiseStaticPlotter
 
 __all__ = [
-    'BG_MAPS', 'CLUSTERS', 'DENSITY', 'FS_TEMPLATES', 'SURFACES', 'VIEWS',
+    'BG_MAPS', 'CLUSTERS', 'COLORBAR', 'DENSITY', 'FS_TEMPLATES', 'SURFACES', 'VIEWS',
     'VeryWiseCameraPresets', 'VeryWiseColormap', 'VeryWiseInteractivePlotter',
     'VeryWiseLayout', 'VeryWiseMesh', 'VeryWiseStaticPlotter',
     'panel_figure', 'surf_figure', 'surf_html', 'surf_png', 'threshold', 'to_array',
@@ -82,7 +82,7 @@ def surf_figure(lh, rh, lh_mask=None, rh_mask=None, cmap=None, vmin=None, vmax=N
 
 def panel_figure(lh, rh, lh_mask=None, rh_mask=None, cmap=None, vmin=None, vmax=None,
                  discrete=None, label=None, mode=DENSITY, stats=None,
-                 width=260, height=420):
+                 width=260, height=420, tick_text=None):
     """
     The colorbar plus either the density of observed values or the per-cluster
     means, as a figure of its own.
@@ -94,14 +94,14 @@ def panel_figure(lh, rh, lh_mask=None, rh_mask=None, cmap=None, vmin=None, vmax=
                                 cmap=cmap, vmin=vmin, vmax=vmax, discrete=discrete)
 
     return side_panel_figure(colormap, label=label, mode=mode, stats=stats,
-                             width=width, height=height)
+                             width=width, height=height, tick_text=tick_text)
 
 
 def surf_png(lh, rh, output_file, lh_mask=None, rh_mask=None, cmap=None,
              vmin=None, vmax=None, discrete=None, fs_template='fsaverage6',
              surface='pial', bg_map_type='sulc', views='all', title=None,
              roi_names=None, colorbar_label=None, mode=DENSITY, stats=None,
-             cell_px=None, dpi=150):
+             tick_text=None, cell_px=None, dpi=150):
     """Render a static multi-view PNG. Returns the file path."""
     mesh, colormap, layout = _build(
         lh, rh, lh_mask, rh_mask, cmap, vmin, vmax, discrete,
@@ -110,7 +110,8 @@ def surf_png(lh, rh, output_file, lh_mask=None, rh_mask=None, cmap=None,
     plotter = VeryWiseStaticPlotter(mesh, colormap, layout, roi_names=roi_names)
 
     return plotter.render(side_panel=True, colorbar_label=colorbar_label,
-                          title=title, mode=mode, stats=stats, cell_px=cell_px,
+                          title=title, mode=mode, stats=stats,
+                          tick_text=tick_text, cell_px=cell_px,
                           output_file=output_file, dpi=dpi)
 
 
@@ -118,7 +119,7 @@ def surf_html(lh, rh, output_html, lh_mask=None, rh_mask=None, cmap=None,
               vmin=None, vmax=None, discrete=None, fs_template='fsaverage6',
               surface='pial', bg_map_type='sulc', views='all', title=None,
               roi_names=None, hover_roi=True, colorbar_label=None,
-              mode=DENSITY, stats=None, cell_px=None):
+              mode=DENSITY, stats=None, tick_text=None, cell_px=None):
     """Render a standalone interactive HTML file. Returns the file path."""
     mesh, colormap, layout = _build(
         lh, rh, lh_mask, rh_mask, cmap, vmin, vmax, discrete,
@@ -128,5 +129,6 @@ def surf_html(lh, rh, output_html, lh_mask=None, rh_mask=None, cmap=None,
                                          roi_names=roi_names, hover_roi=hover_roi)
 
     return plotter.render(side_panel=True, colorbar_label=colorbar_label,
-                          title=title, mode=mode, stats=stats, cell_px=cell_px,
+                          title=title, mode=mode, stats=stats,
+                          tick_text=tick_text, cell_px=cell_px,
                           output_html=output_html)

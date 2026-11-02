@@ -18,8 +18,9 @@ import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-DENSITY = 'density'
-CLUSTERS = 'clusters'
+DENSITY = 'density'    # colorbar + density of every observed value
+CLUSTERS = 'clusters'  # colorbar + mean beta per cluster
+COLORBAR = 'colorbar'  # colorbar alone, for scales whose levels are categories
 
 # gaussian_kde costs O(n_values x n_eval_points), and n_values here is every
 # vertex of both hemispheres (~290k at full resolution), so sampling it
@@ -211,11 +212,17 @@ def cluster_means_traces(colormap, stats):
 # ===== COMPOSITION ============================================================
 
 def add_side_panel(fig, colormap, cb_col, panel_col, label=None, row=1,
-                   mode=DENSITY, stats=None):
-    """Draw the colorbar and its companion panel into `fig`."""
+                   mode=DENSITY, stats=None, tick_text=None):
+    """
+    Draw the colorbar and its companion panel into `fig`.
+
+    `tick_text` replaces the colorbar's own labels, for scales whose levels
+    mean something other than their number (the overlap codes, say).
+    """
     fig.add_trace(colorbar_trace(colormap), row=row, col=cb_col)
 
-    tick_vals, tick_text = colormap.tick_vals, colormap.tick_text
+    tick_vals = colormap.tick_vals
+    tick_text = tick_text or colormap.tick_text
     panel_x_range = [0, 1.05]
     panel_visible = False
 
@@ -261,34 +268,42 @@ def add_side_panel(fig, colormap, cb_col, panel_col, label=None, row=1,
                      ticks='outside', showline=True, linecolor='black',
                      mirror=True, automargin=True, row=row, col=cb_col)
 
-    # --- companion panel axes ---
-    fig.update_xaxes(range=panel_x_range, visible=panel_visible, showgrid=False,
-                     zeroline=False, ticks='outside', showline=panel_visible,
-                     linecolor='black', row=row, col=panel_col)
+    # --- companion panel axes (COLORBAR has no companion) ---
+    if mode != COLORBAR:
+        fig.update_xaxes(range=panel_x_range, visible=panel_visible,
+                         showgrid=False, zeroline=False, ticks='outside',
+                         showline=panel_visible, linecolor='black',
+                         row=row, col=panel_col)
 
-    fig.update_yaxes(range=y_range, visible=False,
-                     showgrid=False, row=row, col=panel_col)
+        fig.update_yaxes(range=y_range, visible=False,
+                         showgrid=False, row=row, col=panel_col)
 
     return fig
 
 
 def side_panel_figure(colormap, label=None, mode=DENSITY, stats=None,
-                      width=260, height=420, x_title=None):
+                      width=260, height=420, x_title=None, tick_text=None):
     """
     The side panel as a standalone figure, for the app to show next to the
     brain card (so that expanding the brains does not drag the legend along).
     """
-    fig = make_subplots(rows=1, cols=2, column_widths=[0.28, 0.72],
-                        shared_yaxes=True, horizontal_spacing=0.04)
+    if mode == COLORBAR:
+        # Just the strip: a density of category codes would say nothing
+        fig = make_subplots(rows=1, cols=1)
+        cb_col = panel_col = 1
+    else:
+        fig = make_subplots(rows=1, cols=2, column_widths=[0.28, 0.72],
+                            shared_yaxes=True, horizontal_spacing=0.04)
+        cb_col, panel_col = 1, 2
 
-    add_side_panel(fig, colormap, cb_col=1, panel_col=2, label=label, mode=mode,
-                   stats=stats)
+    add_side_panel(fig, colormap, cb_col=cb_col, panel_col=panel_col, label=label,
+                   mode=mode, stats=stats, tick_text=tick_text)
 
     if x_title is None and mode == CLUSTERS:
         x_title = 'Mean β per cluster'
 
     if x_title:
-        fig.update_xaxes(title=dict(text=x_title, standoff=4), row=1, col=2)
+        fig.update_xaxes(title=dict(text=x_title, standoff=4), row=1, col=panel_col)
 
     fig.update_layout(
         width=width, height=height,

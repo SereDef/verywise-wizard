@@ -1660,7 +1660,7 @@ requires-dist = [
     { name = "plotly", specifier = ">=6" },
     { name = "requests", specifier = ">=2.32" },
     { name = "scipy", specifier = ">=1.14" },
-    { name = "shiny", specifier = ">=1.2" },
+    { name = "shiny", specifier = ">=1.9" },
     { name = "shinywidgets", specifier = ">=0.3.4" },
     { name = "websockets", specifier = ">=13.1" },
 ]

@@ -9,7 +9,7 @@ authors = [{ name = "Serena Defina" }]
 
 dependencies = [
     # --- app framework ---
-    "shiny>=1.2",
+    "shiny>=1.9",             # ui.toolbar / ui.toolbar_input_select
     "shinywidgets>=0.3.4",
     "faicons>=0.2.2",
     "websockets>=13.1",

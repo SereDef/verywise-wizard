@@ -110,9 +110,10 @@ class VeryWiseSurfacePlotter:
 
     # --- Side panel ----------------------------------------------------------
 
-    def _add_side_panel(self, fig, cb_col, panel_col, label, mode, stats):
+    def _add_side_panel(self, fig, cb_col, panel_col, label, mode, stats,
+                        tick_text=None):
         add_side_panel(fig, self.colormap, cb_col=cb_col, panel_col=panel_col,
-                       label=label, mode=mode, stats=stats)
+                       label=label, mode=mode, stats=stats, tick_text=tick_text)
 
     # --- Traces --------------------------------------------------------------
 
@@ -187,8 +188,8 @@ class VeryWiseStaticPlotter(VeryWiseSurfacePlotter):
     """Multi-view figure composed for PNG export through Kaleido."""
 
     def render(self, side_panel=True, colorbar_label=None, title=None,
-               mode=DENSITY, stats=None, cell_px=None, panel_width=None,
-               output_file=None, dpi=150):
+               mode=DENSITY, stats=None, tick_text=None, cell_px=None,
+               panel_width=None, output_file=None, dpi=150):
 
         fig, cb_col, panel_col = self.layout.build_figure(side_panel, panel_width)
 
@@ -210,7 +211,8 @@ class VeryWiseStaticPlotter(VeryWiseSurfacePlotter):
             fig.update_layout(**{sk: self.scene(hemi, view)})
 
         if side_panel:
-            self._add_side_panel(fig, cb_col, panel_col, colorbar_label, mode, stats)
+            self._add_side_panel(fig, cb_col, panel_col, colorbar_label, mode,
+                                 stats, tick_text)
 
         self._add_roi_legend(fig)
 
@@ -237,7 +239,8 @@ class VeryWiseInteractivePlotter(VeryWiseSurfacePlotter):
     """The figure the app shows, with per-vertex hover text."""
 
     def render(self, side_panel=False, colorbar_label=None, title=None,
-               mode=DENSITY, stats=None, cell_px=None, panel_width=None,
+               mode=DENSITY, stats=None, tick_text=None, cell_px=None,
+               panel_width=None,
                output_html=None):
 
         fig, cb_col, panel_col = self.layout.build_figure(
@@ -257,7 +260,8 @@ class VeryWiseInteractivePlotter(VeryWiseSurfacePlotter):
             fig.update_layout(**{sk: self.scene(hemi, view, bgcolor='rgba(0,0,0,0)')})
 
         if side_panel:
-            self._add_side_panel(fig, cb_col, panel_col, colorbar_label, mode, stats)
+            self._add_side_panel(fig, cb_col, panel_col, colorbar_label, mode,
+                                 stats, tick_text)
 
         self._add_roi_legend(fig)
 

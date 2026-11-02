@@ -350,6 +350,19 @@ def cluster_stats(result):
     return out
 
 
+def compute_difference(result1, result2):
+    """
+    Subtract one result's beta map from the other, vertex by vertex.
+
+    Nothing is masked: the difference is returned everywhere, including
+    vertices that were significant in neither map. Vertices outside the cortex
+    are NaN in both inputs (extract_results turns the exact zeros there into
+    NaN), so they stay NaN here and render uncoloured -- that is why the medial
+    wall still looks blank, not because it was masked out.
+    """
+    return {hemi: result1.betas[hemi] - result2.betas[hemi] for hemi in HEMIS}
+
+
 def compute_overlap(result1, result2):
     """
     Combine the significant clusters of two results.
