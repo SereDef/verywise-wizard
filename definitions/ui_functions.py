@@ -1,14 +1,72 @@
+import asyncio
 import os
 import tempfile
 
 from shiny import Inputs, Outputs, Session, module, reactive, render, req, ui
+from shiny.module import resolve_id
 from shinywidgets import output_widget, render_plotly
 
 import definitions.layout_styles as styles
 from definitions import plotting as vwp
 from definitions.backend_results import cluster_stats, detect_terms, extract_results
 from definitions.plotting.atlas import region_names
-from definitions.plotting.kaleido_patch import chrome_available
+from definitions.plotting.kaleido_patch import png_export_ready
+
+# Rendering the static PNG draws eight 3D scenes in a headless browser: ~50 s on
+# a laptop, ~90 s on a software-rendered server. Set VWWIZARD_PNG_DPI (e.g. 100)
+# to trade resolution for speed; unset keeps the full-quality figure.
+PNG_DPI = int(os.environ.get('VWWIZARD_PNG_DPI', 150))
+
+if PNG_DPI != 150:
+    print(f'[verywise-wizard] static PNG dpi set to {PNG_DPI} via VWWIZARD_PNG_DPI',
+          flush=True)
+
+
+def _png_download_allowed():
+    """
+    Whether to offer the PNG download at all.
+
+    The figure is now rendered *before* the browser asks for it (see
+    `render_download` below), so a slow render no longer stalls the download
+    response and PNG is deliverable wherever the app runs, deployment included.
+
+    This stays as a safety valve rather than a guess about the environment:
+    set VWWIZARD_ALLOW_PNG=0 to hide the PNG option if a host turns out not to
+    manage it.
+    """
+    override = os.environ.get('VWWIZARD_ALLOW_PNG')
+
+    if override is None:
+        return True
+
+    return override.strip().lower() not in ('0', 'false', 'no', '')
+
+
+PNG_DOWNLOAD_ALLOWED = _png_download_allowed()
+
+print(f'[verywise-wizard] PNG download '
+      f'{"enabled" if PNG_DOWNLOAD_ALLOWED else "disabled (HTML only)"}', flush=True)
+
+
+# The download is handed over in two steps: the visible button starts a
+# background render, and once the bytes exist the server tells the client to
+# follow the (hidden) download link, which then returns instantly. Without this
+# the browser would request the file first and sit on an idle connection for the
+# whole render, which a hosting proxy cuts short -- leaving an empty file.
+DOWNLOAD_TRIGGER_JS = ui.tags.script("""
+Shiny.addCustomMessageHandler("vw_download", function(msg) {
+    var link = document.getElementById(msg.id);
+    if (!link) return;
+    var href = link.getAttribute("href");
+    if (href) {
+        // Navigate rather than click: a programmatic click on a
+        // target="_blank" link can be swallowed by the popup blocker
+        window.location.href = href;
+    } else {
+        link.click();
+    }
+});
+""")
 
 
 # ------------------------------------------------------------------------------
@@ -47,6 +105,36 @@ def fill_width(fig):
     """Let a figure follow the width of the card it sits in."""
     fig.update_layout(width=None, autosize=True)
     return fig
+
+
+def render_download_bytes(which_format, args, surface, resolution, roi_names,
+                          title, dpi):
+    """
+    Render the figure and return its bytes.
+
+    Blocking and free of reactive reads, so it can be handed to a worker thread
+    by the extended task that drives the download.
+    """
+    shared = dict(
+        lh=args['lh'], rh=args['rh'],
+        lh_mask=args['lh_mask'], rh_mask=args['rh_mask'],
+        cmap=args['cmap'], discrete=args['discrete'],
+        fs_template=resolution, surface=surface, roi_names=roi_names,
+        colorbar_label=args['label'], mode=args['mode'], stats=args['stats'],
+        title=title)
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        out_file = os.path.join(tmp_dir, f'figure.{which_format}')
+
+        # No views are passed, so each format keeps its own default: the PNG
+        # gets the full six-view figure, the HTML the lateral view on screen.
+        if which_format == 'png':
+            vwp.surf_png(output_file=out_file, dpi=dpi, **shared)
+        else:
+            vwp.surf_html(output_html=out_file, **shared)
+
+        with open(out_file, 'rb') as f:
+            return f.read()
 
 
 def set_if_changed(value, new):
@@ -199,6 +287,7 @@ def main_results_page(tab_name):
                  ' **GO** to visualize the 3D brains.</br></br>Note: sometimes it can take a second to'
                  ' draw those pretty brains, so you may need a little pinch of patience.'
                  ' If you do not have that kind of time, you can reduce the resolution to low.</br>'),
+        DOWNLOAD_TRIGGER_JS,  # registered once, used by both result modules
         single_result_ui('result1'),
         single_result_ui('result2'),
         ' ',  # spacer
@@ -214,12 +303,23 @@ def single_result_ui():
                                                   class_='btn btn-dark action-button'),
                            style='padding-top: 15px')
 
-    # One button, with a switch for what it hands you
+    # One button, with a switch for what it hands you. Where PNG is switched
+    # off, the radio is left out entirely rather than offered and failed.
+    #
+    # The button the user sees is an ordinary action button: it starts the
+    # render. The actual download link is hidden, and the client is told to
+    # follow it once the bytes are ready, so the two steps look like one click.
     download_controls = ui.div(
         ui.input_radio_buttons(id='download_format', label=None,
                                choices=styles.DOWNLOAD_FORMATS, selected='png',
-                               inline=True),
-        ui.download_button(id='download_figure_button', label='Download figure'),
+                               inline=True)
+        if PNG_DOWNLOAD_ALLOWED else None,
+        ui.input_action_button(
+            id='download_button',
+            label='Download figure' if PNG_DOWNLOAD_ALLOWED
+            else 'Download figure (HTML)'),
+        ui.div(ui.download_button(id='download_figure_button', label='hidden'),
+               style='display: none;'),
         style='padding-top: 5px')
 
     return ui.div(
@@ -401,79 +501,118 @@ def update_single_result(input: Inputs, output: Outputs, session: Session,
     @reactive.Calc
     def resolved_download_format():
         """
-        PNG export needs a Chrome that kaleido can drive, which a deployed
-        container may not have (and pip cannot install). Fall back to HTML
-        rather than handing back a broken download.
+        PNG export needs a browser kaleido can drive, which a deployed
+        container does not have and pip cannot install.
+
+        This has to be settled *here* rather than while rendering: Shiny fixes
+        the download's filename before running the body, so a render that
+        fails later can only produce an empty .png. Checking first means the
+        extension is only ever .png once a PNG has been proven to work.
         """
+        if not PNG_DOWNLOAD_ALLOWED:
+            return 'html'  # the radio buttons are not rendered at all
+
         wanted = input.download_format()
 
-        if wanted == 'png' and not chrome_available():
+        if wanted != 'png':
+            return wanted
+
+        with ui.Progress(min=0, max=1) as p:
+            p.set(0, message='Preparing the image renderer...',
+                  detail='The first PNG may need to download a headless '
+                         'browser (about 150 MB). Later ones are quick.')
+
+            ready = png_export_ready()
+
+        if not ready:
+            ui.notification_show(
+                'PNG export needs a headless browser, which could not be '
+                'started or downloaded on this server. Sending an interactive '
+                'HTML figure instead.',
+                type='warning', duration=15)
             return 'html'
 
-        return wanted
+        return 'png'
 
-    @render.download_button(
-        filename=lambda: f'verywise_figure.{resolved_download_format()}')
-    def download_figure_button():
+    # --- Download: render first, hand over second ------------------------
+    # The click starts a background render; when it finishes the client is told
+    # to follow the hidden download link, which then has bytes waiting. Nothing
+    # ever waits on an idle HTTP connection, so the render can take as long as
+    # it likes.
+
+    rendered_download = reactive.Value(None)  # (format, bytes) once ready
+
+    notice_id = str(resolve_id('download_notice'))
+    link_id = str(resolve_id('download_figure_button'))
+
+    @reactive.extended_task
+    async def render_download(which_format, args, surface, resolution, roi_names,
+                              title, dpi):
+        """Render off the main thread, so the session stays responsive."""
+        return which_format, await asyncio.to_thread(
+            render_download_bytes, which_format, args, surface, resolution,
+            roi_names, title, dpi)
+
+    @reactive.Effect
+    @reactive.event(input.download_button)
+    def start_download_render():
         args = plot_args()
         surface, resolution, roi_names = req(brain_settings())
 
         which_format = resolved_download_format()
 
-        if which_format != input.download_format():
+        if PNG_DOWNLOAD_ALLOWED and which_format != input.download_format():
             ui.notification_show(
-                'PNG export needs Google Chrome, which is not available here. '
-                'Downloading an interactive HTML figure instead.',
+                'PNG export needs a headless browser, which is not available '
+                'here. Sending an interactive HTML figure instead.',
                 type='warning', duration=10)
 
-        with ui.Progress(min=0, max=2) as p:
-            if which_format == 'png':
-                p.set(0, message='Starting the image renderer...',
-                      detail='The first PNG takes about a minute while a headless '
-                             'browser starts up. Any later one is much quicker.')
-            else:
-                p.set(0, message='Building the figure...')
+        ui.notification_show(
+            f'Rendering the {which_format.upper()} figure... the download '
+            'starts on its own when it is ready.',
+            id=notice_id, duration=None, type='message')
 
-            with tempfile.TemporaryDirectory() as tmp_dir:
-                out_file = os.path.join(tmp_dir, f'figure.{which_format}')
+        render_download.invoke(which_format, args, surface, resolution,
+                               roi_names, figure_title(), PNG_DPI)
 
-                # No views are passed, so each format keeps its own default:
-                # the PNG gets the full six-view figure, the HTML the lateral
-                # view shown on screen.
-                # Built from the same snapshot the brains were drawn from, so
-                # the download always matches what is on screen.
-                shared = dict(
-                    lh=args['lh'], rh=args['rh'],
-                    lh_mask=args['lh_mask'], rh_mask=args['rh_mask'],
-                    cmap=args['cmap'], discrete=args['discrete'],
-                    fs_template=resolution,
-                    surface=surface,
-                    roi_names=roi_names,
-                    colorbar_label=args['label'],
-                    mode=args['mode'], stats=args['stats'],
-                    title=figure_title())
+    @reactive.Effect
+    async def deliver_download():
+        """Hand the finished render to the browser."""
+        status = render_download.status()
 
-                p.set(1, message='Rendering the figure...')
+        if status == 'error':
+            ui.notification_remove(notice_id)
+            ui.notification_show(
+                'Could not render the figure. Try the other format, or a '
+                'lower resolution.', type='error', duration=15)
+            return
 
-                if which_format == 'png':
-                    try:
-                        vwp.surf_png(output_file=out_file, **shared)
-                    except Exception as e:
-                        # Chrome was found but could not render (sandboxing, a
-                        # partial download, no memory...). Say what happened
-                        # instead of handing back a broken file.
-                        ui.notification_show(
-                            f'Could not render the PNG ({type(e).__name__}). '
-                            'Try the HTML download instead.',
-                            type='error', duration=15)
-                        raise
-                else:
-                    vwp.surf_html(output_html=out_file, **shared)
+        if status != 'success':
+            return  # not started, still running, or cancelled
 
-                p.set(2, message='Done!')
+        rendered_download.set(render_download.result())
 
-                with open(out_file, 'rb') as f:
-                    yield f.read()
+        ui.notification_remove(notice_id)
+        await session.send_custom_message('vw_download', {'id': link_id})
+
+    @reactive.Effect
+    def discard_stale_download():
+        """Anything already rendered no longer matches the current settings."""
+        plot_args()
+        brain_settings()
+
+        rendered_download.set(None)
+
+    @render.download_button(
+        filename=lambda: f'verywise_figure.{resolved_download_format()}')
+    def download_figure_button():
+        ready = rendered_download()
+
+        # Only ever reached once the render has finished, so this returns at
+        # once instead of holding the response open.
+        req(ready is not None)
+
+        yield ready[1]
 
     return input.select_model, input.select_term, input.select_measure
 

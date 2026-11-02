@@ -23,9 +23,16 @@ import platform
 import os
 import shutil
 import sys
+import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 
 import numpy as np
+
+# How long to wait for the probe render or the browser download before giving
+# up. A browser that cannot launch sometimes hangs rather than failing, and
+# that must not block the app.
+PROBE_TIMEOUT = 180
 
 _PATCHED = False
 
@@ -127,3 +134,67 @@ def patch_kaleido():
     _patch_chrome_args()
 
     _PATCHED = True
+
+
+# ===== CAN THIS MACHINE ACTUALLY PRODUCE A PNG? ===============================
+
+def _run_bounded(fn):
+    """Run `fn` in a worker, so a hung browser cannot block the app forever."""
+    pool = ThreadPoolExecutor(max_workers=1)
+    try:
+        return bool(pool.submit(fn).result(timeout=PROBE_TIMEOUT))
+    except Exception:
+        # A timeout, a crash, a missing browser -- all mean "no" here
+        return False
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
+
+
+def _probe_png():
+    """Render a tiny PNG, to prove the whole chain really works."""
+    import plotly.graph_objects as go
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        out_file = os.path.join(tmp_dir, 'probe.png')
+
+        # 10x10 is plotly's smallest allowed figure size
+        go.Figure(layout={'width': 10, 'height': 10}).write_image(out_file, format='png')
+
+        return os.path.getsize(out_file) > 0
+
+
+def _fetch_chrome():
+    """Download the headless Chrome kaleido drives (~150 MB), once per machine."""
+    from plotly.io import get_chrome
+
+    get_chrome()
+    chrome_available.cache_clear()
+
+    return True
+
+
+@lru_cache(maxsize=1)
+def png_export_ready(allow_download=True):
+    """
+    Whether a PNG can actually be produced here.
+
+    Looking for a chrome binary is not enough: a container may carry one that
+    cannot launch, and then `write_image` fails only once the user has already
+    asked for the download. The sole reliable check is to render something tiny
+    and see whether bytes come out. Cached, so it costs one browser start-up
+    per process.
+    """
+    patch_kaleido()
+
+    if _run_bounded(_probe_png):
+        return True
+
+    if not allow_download:
+        return False
+
+    # kaleido ships no browser and pip cannot install one, so fetch the
+    # headless Chrome it drives and try once more.
+    if not _run_bounded(_fetch_chrome):
+        return False
+
+    return _run_bounded(_probe_png)
