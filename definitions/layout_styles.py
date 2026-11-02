@@ -39,7 +39,6 @@ measure_colors = {'thickness': '#FFCCCC',
                  'white.K': '#d8f3dc'}
 
 # ------ PLOTTING ------------
-BETA_COLORMAP = 'viridis'
 CLUSTER_COLORMAP = 'turbo'
 
 # Surface and resolution names follow nilearn, not FreeSurfer.
@@ -49,9 +48,10 @@ SURFACE_NAMES = {'pial': 'Pial',
                  'inflated': 'Inflated',
                  'flat': 'Flat'}
 
-RESOLUTION_NAMES = {'fsaverage': 'High (164k nodes)',
+# Listed cheapest first, since Low is the default
+RESOLUTION_NAMES = {'fsaverage5': 'Low (10k nodes)',
                     'fsaverage6': 'Medium (41k nodes)',
-                    'fsaverage5': 'Low (10k nodes)'}
+                    'fsaverage': 'High (164k nodes)'}
 
 OUTPUT_NAMES = {'betas': 'Beta values', 'clusters': 'Clusters'}
 
@@ -59,11 +59,10 @@ DOWNLOAD_FORMATS = {'png': 'PNG', 'html': 'HTML'}
 
 BETA_LABEL = 'Observed β values'
 
-OVLP_COLOR1 = '#333399'  # blue
-OVLP_COLOR2 = '#FFCC33'  # yellow
-OVLP_COLOR3 = VW_COLOR_PALETTE['dark-red']  # '#CC6677'  # light red
-
-OVLP_COLORS = [OVLP_COLOR1, OVLP_COLOR2, OVLP_COLOR3]
+# One colour per overlap code: 1 = first map only, 2 = second map only, 3 = both
+OVLP_COLORS = ['#333399',                     # blue
+               '#FFCC33',                     # yellow
+               VW_COLOR_PALETTE['dark-red']]  # dark red
 
 
 

@@ -12,16 +12,6 @@ from definitions.backend_results import cluster_stats, detect_terms, extract_res
 from definitions.plotting.atlas import region_names
 from definitions.plotting.kaleido_patch import png_export_ready
 
-# Rendering the static PNG draws eight 3D scenes in a headless browser: ~50 s on
-# a laptop, ~90 s on a software-rendered server. Set VWWIZARD_PNG_DPI (e.g. 100)
-# to trade resolution for speed; unset keeps the full-quality figure.
-PNG_DPI = int(os.environ.get('VWWIZARD_PNG_DPI', 150))
-
-if PNG_DPI != 150:
-    print(f'[verywise-wizard] static PNG dpi set to {PNG_DPI} via VWWIZARD_PNG_DPI',
-          flush=True)
-
-
 def _png_download_allowed():
     """
     Whether to offer the PNG download at all.
@@ -54,18 +44,31 @@ print(f'[verywise-wizard] PNG download '
 # the browser would request the file first and sit on an idle connection for the
 # whole render, which a hosting proxy cuts short -- leaving an empty file.
 DOWNLOAD_TRIGGER_JS = ui.tags.script("""
-Shiny.addCustomMessageHandler("vw_download", function(msg) {
-    var link = document.getElementById(msg.id);
-    if (!link) return;
-    var href = link.getAttribute("href");
-    if (href) {
-        // Navigate rather than click: a programmatic click on a
-        // target="_blank" link can be swallowed by the popup blocker
-        window.location.href = href;
-    } else {
-        link.click();
+(function () {
+    function register() {
+        // Shiny may not be defined yet when this tag is parsed
+        if (typeof Shiny === "undefined" || !Shiny.addCustomMessageHandler) {
+            setTimeout(register, 50);
+            return;
+        }
+        Shiny.addCustomMessageHandler("vw_download", function (msg) {
+            var link = document.getElementById(msg.id);
+            if (!link) {
+                console.error("[verywise-wizard] no download link " + msg.id);
+                return;
+            }
+            var href = link.getAttribute("href");
+            if (!href) {
+                console.error("[verywise-wizard] download link has no href yet");
+                return;
+            }
+            // Navigate rather than click: a programmatic click on a
+            // target="_blank" link can be swallowed by the popup blocker
+            window.location.href = href;
+        });
     }
-});
+    register();
+})();
 """)
 
 
@@ -108,7 +111,7 @@ def fill_width(fig):
 
 
 def render_download_bytes(which_format, args, surface, resolution, roi_names,
-                          title, dpi):
+                          title):
     """
     Render the figure and return its bytes.
 
@@ -129,7 +132,7 @@ def render_download_bytes(which_format, args, surface, resolution, roi_names,
         # No views are passed, so each format keeps its own default: the PNG
         # gets the full six-view figure, the HTML the lateral view on screen.
         if which_format == 'png':
-            vwp.surf_png(output_file=out_file, dpi=dpi, **shared)
+            vwp.surf_png(output_file=out_file, **shared)
         else:
             vwp.surf_html(output_html=out_file, **shared)
 
@@ -171,8 +174,12 @@ def surface_choice(id_):
 
 
 def resolution_choice(id_):
+    # Low by default: the brains cross the websocket as one message, and
+    # fsaverage6 makes that 10.5 MB against 2.6 MB for fsaverage5 -- four times
+    # more to transfer and draw, for a mesh difference that is barely visible at
+    # the size the card shows. Higher resolutions stay one click away.
     return ui.input_selectize(id=id_, label='Resolution',
-                              choices=styles.RESOLUTION_NAMES, selected='fsaverage6')
+                              choices=styles.RESOLUTION_NAMES, selected='fsaverage5')
 
 
 # ------------------------------------------------------------------------------
@@ -547,11 +554,11 @@ def update_single_result(input: Inputs, output: Outputs, session: Session,
 
     @reactive.extended_task
     async def render_download(which_format, args, surface, resolution, roi_names,
-                              title, dpi):
+                              title):
         """Render off the main thread, so the session stays responsive."""
         return which_format, await asyncio.to_thread(
             render_download_bytes, which_format, args, surface, resolution,
-            roi_names, title, dpi)
+            roi_names, title)
 
     @reactive.Effect
     @reactive.event(input.download_button)
@@ -573,7 +580,7 @@ def update_single_result(input: Inputs, output: Outputs, session: Session,
             id=notice_id, duration=None, type='message')
 
         render_download.invoke(which_format, args, surface, resolution,
-                               roi_names, figure_title(), PNG_DPI)
+                               roi_names, figure_title())
 
     @reactive.Effect
     async def deliver_download():
@@ -603,6 +610,11 @@ def update_single_result(input: Inputs, output: Outputs, session: Session,
 
         rendered_download.set(None)
 
+    # suspend_when_hidden=False is essential here: this link lives inside a
+    # display:none wrapper, and Shiny suspends hidden outputs. Suspended, its
+    # value -- the download URL -- never renders, so the href stays empty and
+    # the client has nothing to follow when told the figure is ready.
+    @output(suspend_when_hidden=False)
     @render.download_button(
         filename=lambda: f'verywise_figure.{resolved_download_format()}')
     def download_figure_button():

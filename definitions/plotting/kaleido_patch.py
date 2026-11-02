@@ -18,10 +18,8 @@ handling that only applies when driving kaleido from R on a cluster.
 
 import importlib
 import json
-import pathlib
 import platform
 import os
-import shutil
 import sys
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
@@ -35,36 +33,6 @@ import numpy as np
 PROBE_TIMEOUT = 180
 
 _PATCHED = False
-
-# kaleido v1 does not ship a browser (v0.2.1 did, but plotly >= 6 refuses to use
-# it). It drives an installed Chrome/Chromium through choreographer, or one
-# choreographer downloaded earlier. A container built from requirements.txt
-# alone has neither, and pip cannot supply one -- so the app has to be able to
-# tell, and say so, rather than fail obscurely on the download button.
-CHROME_BINARIES = ('chromium', 'chromium-browser', 'google-chrome',
-                   'google-chrome-stable', 'chrome')
-
-CHROME_APP_PATHS = (
-    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-    '/Applications/Chromium.app/Contents/MacOS/Chromium',
-)
-
-
-@lru_cache(maxsize=1)
-def chrome_available():
-    """Whether a browser kaleido can drive is present on this machine."""
-    if os.environ.get('KALEIDO_CHROME_PATH'):  # explicit override
-        return True
-
-    if any(shutil.which(name) for name in CHROME_BINARIES):
-        return True
-
-    if any(os.path.exists(path) for path in CHROME_APP_PATHS):
-        return True
-
-    # choreographer's own download cache, if Chrome was fetched before
-    cache = pathlib.Path.home() / '.local' / 'share' / 'choreographer'
-    return cache.is_dir() and any(cache.rglob('chrome*'))
 
 
 class _OrjsonShim:
@@ -164,11 +132,15 @@ def _probe_png():
 
 
 def _fetch_chrome():
-    """Download the headless Chrome kaleido drives (~150 MB), once per machine."""
+    """Download the headless Chrome kaleido drives (~150 MB), once per machine.
+
+    kaleido v1 ships no browser (v0.2.1 did, but plotly >= 6 refuses to use it)
+    and pip cannot supply one, so this is the only way to get PNG export going
+    on a container that has none.
+    """
     from plotly.io import get_chrome
 
     get_chrome()
-    chrome_available.cache_clear()
 
     return True
 

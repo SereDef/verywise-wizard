@@ -20,8 +20,6 @@ import numpy as np
 
 ATLAS_FILE = Path(__file__).parent / 'data' / 'fsaverage_aparc.npz'
 
-UNLABELLED = -1
-
 
 @lru_cache(maxsize=1)
 def _load_atlas():
