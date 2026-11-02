@@ -5,3 +5,4 @@ __pycache__/
 definitions/__pycache__/
 .venv/
 definitions/dev.ipynb
+tmp_results/

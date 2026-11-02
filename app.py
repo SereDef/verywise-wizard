@@ -1,21 +1,22 @@
 from pathlib import Path
-from shiny import App, reactive, render, ui
 
-from shinywidgets import render_plotly
 from faicons import icon_svg
+from shiny import App, reactive, render, ui
+from shinywidgets import render_plotly
 
 import definitions.layout_styles as styles
-from definitions.backend_calculations import detect_models, compute_overlap
-from definitions.backend_dynamic_plots import plot_overlap
-
-from definitions.ui_functions import welcome_page, main_results_page, overlap_page, \
-    describe_input_folder, update_single_result
-
+from definitions import plotting as vwp
+from definitions.backend_results import compute_overlap, detect_models, extract_results
+from definitions.ui_functions import (
+    describe_input_folder, fill_width, main_results_page, overlap_page,
+    update_single_result, welcome_page,
+)
 
 here = Path(__file__).parent
 
 start_folder = './verywise_example_results'
 # Lorenza (QDECR)
+# start_folder = './qdecr_example_results'
 # start_folder = '/Users/Serena/Desktop/PA-brain-project/results'
 # start_folder = 'https://github.com/SereDef/PA-brain-project/tree/main/results'
 
@@ -48,10 +49,10 @@ app_ui = ui.page_fillable(
 
         title=ui.img(src='vwwizard_logo.png', alt='verywise wizard logo', height='140px'),
         selected='welcome_tab',
-        position='fixed-top',
         fillable=True,
         padding=[140, 20, 20],  # top, left-right, bottom in px
-        bg='white',
+        # position and bg moved in here in shiny 1.3
+        navbar_options=ui.navbar_options(position='fixed-top', bg='white'),
         window_title='Verywise Wizard',
         id='navbar'),
 
@@ -62,11 +63,11 @@ app_ui = ui.page_fillable(
 
 def app_server(input, output, session):
 
-    # Extract results from folder or link 
+    # Extract results from folder or link
     @reactive.Calc
     @reactive.event(input.go_button)
     def all_results():
-        return detect_models(input.results_folder(), 
+        return detect_models(input.results_folder(),
                              results_format=input.analysis_software())
 
     # TAB 2: MAIN RESULTS  ============================================================
@@ -78,21 +79,21 @@ def app_server(input, output, session):
     @render.text
     @reactive.event(input.go_button)
     def input_folder_info():
-        return describe_input_folder(model_dict=all_results(), 
+        return describe_input_folder(model_dict=all_results(),
                                      selected_folder=input.results_folder())
-    
-    @render.image  
+
+    @render.image
     def funders_image():
-        img = {"src": here / "www/funders.png", "width": "100%"}  
+        img = {"src": here / "www/funders.png", "width": "100%"}
         return img
 
     # TAB 3: OVERLAP  ===============================================================
     @reactive.Calc
     def overlap_results():
-        return compute_overlap(model1=model1(), term1=term1(), measure1=measure1(),
-                               model2=model2(), term2=term2(), measure2=measure2(),
-                               resdir=all_results()['results_directory'],
-                               resformat=all_results()['results_format'])
+        result1 = extract_results(all_results(), model1(), term1(), measure1())
+        result2 = extract_results(all_results(), model2(), term2(), measure2())
+
+        return compute_overlap(result1, result2)
 
     @render.text
     def overlap_info():
@@ -110,22 +111,22 @@ def app_server(input, output, session):
                            f'{text[1]} was unique to {legend[1]}  **{model1()}** (<ins>{measure1()}</ins>)</br>'
                            f'{text[2]} was unique to {legend[2]}  **{model2()}** (<ins>{measure2()}</ins>)')
 
-    @reactive.Calc
-    def overlap_brain3D():
-        return plot_overlap(overlap_maps = overlap_results()[1],
-                            surf=input.overlap_select_surface(),
-                            resol=input.overlap_select_resolution())
-
     @render_plotly
-    def overlap_brain_left():
-        brain = overlap_brain3D()
-        return brain['left']
+    def overlap_brains():
+        overlap_maps = overlap_results()[1]
 
-    @render_plotly
-    def overlap_brain_right():
-        brain = overlap_brain3D()
-        return brain['right']
+        # Codes are 1 = first map only, 2 = second map only, 3 = both, so the
+        # three overlap colours line up with the discrete levels.
+        return fill_width(vwp.surf_figure(
+            overlap_maps['left'].astype(float),
+            overlap_maps['right'].astype(float),
+            lh_mask=overlap_maps['left'] > 0,
+            rh_mask=overlap_maps['right'] > 0,
+            cmap=styles.OVLP_COLORS,
+            discrete=True,
+            fs_template=input.overlap_select_resolution(),
+            surface=input.overlap_select_surface(),
+            roi_names=list(input.overlap_select_roi()) or None))
 
 
 app = App(app_ui, app_server, static_assets=here / 'www')
-

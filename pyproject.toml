@@ -1,0 +1,39 @@
+[project]
+name = "verywise-wizard"
+version = "0.2.0"
+description = "Interactive application for visualizing whole-brain surface vertex-wise statistical maps."
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+license = { file = "LICENSE" }
+authors = [{ name = "Serena Defina" }]
+
+dependencies = [
+    # --- app framework ---
+    "shiny>=1.2",
+    "shinywidgets>=0.3.4",
+    "faicons>=0.2.2",
+    "websockets>=13.1",
+    # --- neuroimaging ---
+    "nilearn>=0.12",          # SurfaceImage / PolyMesh / load_fsaverage
+    "nibabel>=5.3",
+    # --- numerics ---
+    "numpy>=2.1",
+    "pandas>=2.2",
+    "scipy>=1.14",
+    # --- plotting ---
+    "plotly>=6",
+    "kaleido>=1",             # static PNG export (see plotting/kaleido_patch.py)
+    "matplotlib>=3.9",        # colormap objects only, no figure rendering
+    # --- results fetching ---
+    "requests>=2.32",
+]
+
+[dependency-groups]
+dev = [
+    "ipykernel>=6.29",
+]
+
+[tool.uv]
+# Keep the generated requirements.txt in sync for Posit Connect Cloud:
+#   uv export --no-hashes --no-dev --no-emit-project -o requirements.txt
+package = false

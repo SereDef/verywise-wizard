@@ -42,6 +42,23 @@ measure_colors = {'thickness': '#FFCCCC',
 BETA_COLORMAP = 'viridis'
 CLUSTER_COLORMAP = 'turbo'
 
+# Surface and resolution names follow nilearn, not FreeSurfer.
+# This is deliberately a subset of plotting.SURFACES: the engine also knows
+# 'white_matter' and 'sphere', they are just not offered in the app.
+SURFACE_NAMES = {'pial': 'Pial',
+                 'inflated': 'Inflated',
+                 'flat': 'Flat'}
+
+RESOLUTION_NAMES = {'fsaverage': 'High (164k nodes)',
+                    'fsaverage6': 'Medium (41k nodes)',
+                    'fsaverage5': 'Low (10k nodes)'}
+
+OUTPUT_NAMES = {'betas': 'Beta values', 'clusters': 'Clusters'}
+
+DOWNLOAD_FORMATS = {'png': 'PNG', 'html': 'HTML'}
+
+BETA_LABEL = 'Observed β values'
+
 OVLP_COLOR1 = '#333399'  # blue
 OVLP_COLOR2 = '#FFCC33'  # yellow
 OVLP_COLOR3 = VW_COLOR_PALETTE['dark-red']  # '#CC6677'  # light red

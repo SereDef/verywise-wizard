@@ -1,13 +1,90 @@
-from shiny import Inputs, Outputs, Session, module, reactive, render, ui
+import os
+import tempfile
 
+from shiny import Inputs, Outputs, Session, module, reactive, render, req, ui
 from shinywidgets import output_widget, render_plotly
 
-import io
-
 import definitions.layout_styles as styles
-from definitions.backend_calculations import detect_terms, extract_results
-from definitions.backend_dynamic_plots import plot_surfmap
-from definitions.backend_static_plots import beta_colorbar_density_figure, clusterwise_means_figure, plot_brain_2d
+from definitions import plotting as vwp
+from definitions.backend_results import cluster_stats, detect_terms, extract_results
+from definitions.plotting.atlas import region_names
+from definitions.plotting.kaleido_patch import chrome_available
+
+
+# ------------------------------------------------------------------------------
+# Shared helpers
+# ------------------------------------------------------------------------------
+
+def display_args(result, which_output):
+    """
+    Translate a VWResult into the arguments the plotting engine needs, for
+    either display mode. Both the brains and the legend are built from these,
+    so the two can never disagree about the colour scale.
+    """
+    if which_output == 'clusters':
+        return dict(lh=result.clusters['left'].astype(float),
+                    rh=result.clusters['right'].astype(float),
+                    lh_mask=result.mask['left'],
+                    rh_mask=result.mask['right'],
+                    cmap=styles.CLUSTER_COLORMAP,
+                    discrete=True,
+                    label='Cluster',
+                    mode=vwp.CLUSTERS,
+                    stats=cluster_stats(result))
+
+    return dict(lh=result.betas['left'],
+                rh=result.betas['right'],
+                lh_mask=result.mask['left'],
+                rh_mask=result.mask['right'],
+                cmap=None,
+                discrete=None,
+                label=styles.BETA_LABEL,
+                mode=vwp.DENSITY,
+                stats=None)
+
+
+def fill_width(fig):
+    """Let a figure follow the width of the card it sits in."""
+    fig.update_layout(width=None, autosize=True)
+    return fig
+
+
+def set_if_changed(value, new):
+    """
+    Update a reactive value only when it really differs.
+
+    reactive.Value.set() compares by identity, so handing it an equal-but-new
+    tuple would still invalidate everything downstream. Comparing by value
+    instead is what lets, say, a change of surface type leave the legend alone.
+    """
+    with reactive.isolate():
+        if value() != new:
+            value.set(new)
+
+
+def selection_pane(*controls, col_widths=(3, 3, 3, 3)):
+    # Never hand bslib more widths than there are controls, or it warns
+    return ui.layout_columns(*controls, col_widths=col_widths[:len(controls)],
+                             gap='20px', style=styles.SELECTION_PANE)
+
+
+def roi_choice(id_):
+    # 'unknown' is the medial wall, which has no boundary worth drawing
+    regions = [r for r in region_names() if r != 'unknown']
+    return ui.input_selectize(id=id_, label='ROI contours (optional)',
+                              choices=regions, selected=None, multiple=True,
+                              options={'plugins': ['remove_button'],
+                                       'placeholder': 'No contours'})
+
+
+def surface_choice(id_):
+    return ui.input_selectize(id=id_, label='Surface type',
+                              choices=styles.SURFACE_NAMES, selected='pial')
+
+
+def resolution_choice(id_):
+    return ui.input_selectize(id=id_, label='Resolution',
+                              choices=styles.RESOLUTION_NAMES, selected='fsaverage6')
 
 
 # ------------------------------------------------------------------------------
@@ -38,7 +115,7 @@ def welcome_page(start_folder, tab_name):
                         '</br>'
                         'Hit **GO** to see an overview of the results in the selected folder.</br>'),
             ui.input_radio_buttons(id='analysis_software', label='Analyses ran using:',
-                                   choices={'QDECR': ui.markdown('`QDECR`'), 
+                                   choices={'QDECR': ui.markdown('`QDECR`'),
                                             'verywise': ui.markdown('`verywise`')},
                                    inline=True, selected='verywise'),
             ui.div(ui.layout_columns(
@@ -131,92 +208,66 @@ def main_results_page(tab_name):
 @module.ui
 def single_result_ui():
 
-    model_choice = ui.output_ui('model_ui')
-
-    term_choice = ui.output_ui('term_ui')
-
-    measure_choice = ui.output_ui('measure_ui')
-
-    output_choice = ui.input_selectize(
-        id='select_output',
-        label='Display',
-        choices={'betas': 'Beta values', 'clusters': 'Clusters'},
-        selected='betas')
-
-    surface_choice = ui.input_selectize(
-        id='select_surface',
-        label='Surface type',
-        choices={'pial': 'Pial', 'infl': 'Inflated', 'flat': 'Flat'},
-        selected='pial')
-
-    resolution_choice = ui.input_selectize(
-        id='select_resolution',
-        label='Resolution',
-        choices={'fsaverage': 'High (164k nodes)', 'fsaverage6': 'Medium (50k nodes)', 'fsaverage5': 'Low (10k modes)'},
-        selected='fsaverage6')
-
     # Buttons
     update_button = ui.div(ui.input_action_button(id='update_button',
                                                   label='GO',
                                                   class_='btn btn-dark action-button'),
                            style='padding-top: 15px')
 
-    download_figure_button = ui.div(ui.download_button(id='download_figure_button',
-                                                       label='Download png'),
-                                                       # class_='btn btn-light action-button'),
-                                    style='padding-top: 15px')
+    # One button, with a switch for what it hands you
+    download_controls = ui.div(
+        ui.input_radio_buttons(id='download_format', label=None,
+                               choices=styles.DOWNLOAD_FORMATS, selected='png',
+                               inline=True),
+        ui.download_button(id='download_figure_button', label='Download figure'),
+        style='padding-top: 5px')
 
     return ui.div(
         # Selection pane
         ui.layout_columns(
-            ui.layout_columns(
-                model_choice, term_choice, measure_choice, output_choice, surface_choice, resolution_choice,
-                col_widths=(2, 2, 2, 2, 2, 2),  # negative numbers for empty spaces
-                gap='30px',
-                style=styles.SELECTION_PANE),
+            selection_pane(
+                ui.output_ui('model_ui'),
+                ui.output_ui('term_ui'),
+                ui.output_ui('measure_ui'),
+                ui.input_selectize(id='select_output', label='Display',
+                                   choices=styles.OUTPUT_NAMES, selected='betas'),
+                surface_choice('select_surface'),
+                resolution_choice('select_resolution'),
+                roi_choice('select_roi'),
+            ),
             update_button,
             col_widths=(11, 1)
         ),
         # Info
         ui.layout_columns(
             ui.row(ui.output_ui('info'), style=styles.INFO_MESSAGE),
-            download_figure_button,
-            col_widths=(8, -2, 2)
+            download_controls,
+            col_widths=(8, -1, 3)
         ),
-        # Brain plots
+        # Brain plots: both hemispheres live in one figure, so the card can be
+        # expanded on its own, while the legend stays put beside it.
         ui.layout_columns(
-            ui.card('Left hemisphere',
-                    output_widget('brain_left'),
+            ui.card(ui.card_header('Brain surface maps'),
+                    output_widget('brains'),
                     full_screen=True),  # expand icon appears when hovering over the card body
-            ui.card('Right hemisphere',
-                    output_widget('brain_right'),
-                    full_screen=True),
-            ui.output_plot('color_legend'),
-            col_widths=(4, 4, 4)
+            ui.card(ui.card_header('Legend'),
+                    output_widget('legend')),
+            col_widths=(8, 4)
         ))
+
 
 @module.server
 def update_single_result(input: Inputs, output: Outputs, session: Session,
                          all_results) -> tuple:
 
-    @reactive.Calc
-    def input_resdir():
-        return all_results()['results_directory']
-    
-    @reactive.Calc
-    def input_resformat():
-        return all_results()['results_format']
-
-
     @output
 
     @render.ui
-    # @reactive.event(go)
     def model_ui():
 
         all_models = dict()
         for m in all_results()['results'].keys():
-           
+
             sub_models = list(all_results()['results'][m]['model'].unique())
             # TMP: names are kept as they are
             all_models[m] = dict(zip([f'{m}/{sm}' for sm in sub_models],
@@ -245,7 +296,6 @@ def update_single_result(input: Inputs, output: Outputs, session: Session,
             label="Choose measure",
             choices=avail_measures)
 
-
     @render.ui
     def term_ui():
 
@@ -258,94 +308,175 @@ def update_single_result(input: Inputs, output: Outputs, session: Session,
             label='Choose term',
             choices=avail_terms)
 
+    # --- Settings ---------------------------------------------------------
+    # Snapshotted when GO is pressed, split by what they can actually affect.
+    # Changing only the surface, resolution or ROI contours leaves
+    # `data_settings` and `display_setting` untouched, so the legend is never
+    # rebuilt or re-sent for it -- the one already on screen still fits.
+
+    data_settings = reactive.Value(None)     # model / term / measure
+    display_setting = reactive.Value(None)   # beta values or clusters
+    brain_settings = reactive.Value(None)    # surface / resolution / ROI contours
+
     @reactive.Calc
+    def selected_roi():
+        # A tuple, so it can be compared by value when snapshotting settings
+        return tuple(input.select_roi())
+
+    @reactive.Effect
     @reactive.event(input.update_button, ignore_none=True)
-    def single_result_output():
-        with ui.Progress(min=1, max=6) as p:
+    def snapshot_settings():
+        set_if_changed(data_settings, (input.select_model(),
+                                       input.select_term(),
+                                       input.select_measure()))
+        set_if_changed(display_setting, input.select_output())
+        set_if_changed(brain_settings, (input.select_surface(),
+                                        input.select_resolution(),
+                                        selected_roi()))
 
-            p.set(1, message="Loading results...")
+    @reactive.Calc
+    def figure_title():
+        which_model, _which_term, which_meas = req(data_settings())
+        return f'{which_model} ({which_meas})'
 
-            # Extract results
-            min_beta, max_beta, mean_beta, n_clusters, sign_clusters, sign_betas, all_betas = extract_results(
-                which_model=input.select_model(),
-                which_term=input.select_term(),
-                which_meas=input.select_measure(),
-                resdir=input_resdir(),
-                resformat=input_resformat())
+    # --- Results and figures ---------------------------------------------
 
-            p.set(2, message="Calculating maps...")
+    @reactive.Calc
+    def result_data():
+        which_model, which_term, which_meas = req(data_settings())
 
-            l_nc = int(n_clusters[0])
-            r_nc = int(n_clusters[1])
+        with ui.Progress(min=0, max=1) as p:
+            p.set(0, message='Loading results...')
 
-            if l_nc == r_nc == 0:
-                info = ui.markdown(
-                    f'**0** clusters identified (in the left or the right hemisphere).')
-                brains = {'left': None, 'right': None}
-                legend_plot = None
+            return extract_results(all_results=all_results(),
+                                   which_model=which_model,
+                                   which_term=which_term,
+                                   which_meas=which_meas)
 
-            else:
-                info = ui.markdown(
-                    f'**{l_nc + r_nc}** clusters identified ({l_nc} in the left and {r_nc} in the right hemisphere).<br />'
-                    f'Mean beta value [range] = **{mean_beta:.2f}** [{min_beta:.2f}; {max_beta:.2f}]')
-
-                p.set(3, message="Calculating maps...")
-
-                brains = plot_surfmap(
-                    min_beta, max_beta, n_clusters, sign_clusters, sign_betas,
-                    surf=input.select_surface(),
-                    resol=input.select_resolution(),
-                    output=input.select_output())
-
-                p.set(4, message="Rendering brains...")
-
-                if input.select_output() == 'betas':
-                    legend_plot = beta_colorbar_density_figure(sign_betas, all_betas,
-                                                             figsize=(4, 6),
-                                                             colorblind=False,
-                                                             set_range=None)
-                else:
-                    legend_plot = clusterwise_means_figure(sign_clusters, sign_betas,
-                                                           figsize=(4, 6),
-                                                           cmap=styles.CLUSTER_COLORMAP,
-                                                           tot_clusters=int(n_clusters[0]+n_clusters[1]))
-
-                p.set(5, message="...almost done!")
-
-        return info, brains, legend_plot, sign_betas, all_betas
+    @reactive.Calc
+    def plot_args():
+        return display_args(result_data(), req(display_setting()))
 
     @render.text
     def info():
-        md_info = single_result_output()[0]
-        return md_info
+        result = result_data()
+
+        l_nc = result.n_clusters['left']
+        r_nc = result.n_clusters['right']
+
+        if result.is_empty:
+            return ui.markdown(
+                '**0** clusters identified (in the left or the right hemisphere).')
+
+        min_beta, mean_beta, max_beta = result.beta_summary()
+
+        return ui.markdown(
+            f'**{l_nc + r_nc}** clusters identified ({l_nc} in the left and {r_nc} in the right hemisphere).<br />'
+            f'Mean beta value [range] = **{mean_beta:.2f}** [{min_beta:.2f}; {max_beta:.2f}]')
 
     @render_plotly
-    def brain_left():
-        brain = single_result_output()[1]
-        return brain['left']
+    def brains():
+        args = plot_args()
+        surface, resolution, roi_names = req(brain_settings())
+
+        with ui.Progress(min=0, max=1) as p:
+            p.set(0, message='Drawing the brains...')
+
+            return fill_width(vwp.surf_figure(
+                args['lh'], args['rh'], args['lh_mask'], args['rh_mask'],
+                cmap=args['cmap'], discrete=args['discrete'],
+                fs_template=resolution,
+                surface=surface,
+                roi_names=roi_names))
 
     @render_plotly
-    def brain_right():
-        brain = single_result_output()[1]
-        return brain['right']
+    def legend():
+        args = plot_args()
 
-    @render.plot(alt="All observed beta values")
-    def color_legend():
-        return single_result_output()[2]
+        return fill_width(vwp.panel_figure(
+            args['lh'], args['rh'], args['lh_mask'], args['rh_mask'],
+            cmap=args['cmap'], discrete=args['discrete'],
+            label=args['label'], mode=args['mode'], stats=args['stats']))
 
-    @render.download(filename=f"verywise_figure.png")
+    @reactive.Calc
+    def resolved_download_format():
+        """
+        PNG export needs a Chrome that kaleido can drive, which a deployed
+        container may not have (and pip cannot install). Fall back to HTML
+        rather than handing back a broken download.
+        """
+        wanted = input.download_format()
+
+        if wanted == 'png' and not chrome_available():
+            return 'html'
+
+        return wanted
+
+    @render.download_button(
+        filename=lambda: f'verywise_figure.{resolved_download_format()}')
     def download_figure_button():
-        stat_fig = plot_brain_2d(sign_betas = single_result_output()[3], 
-                                 all_observed_betas = single_result_output()[4],
-                                 model=input.select_model(),
-                                 meas=input.select_measure(),
-                                 resol=input.select_resolution(),
-                                 title=None)
-        with io.BytesIO() as buf:
-            stat_fig.savefig(buf, format="png")
-            yield buf.getvalue()
+        args = plot_args()
+        surface, resolution, roi_names = req(brain_settings())
+
+        which_format = resolved_download_format()
+
+        if which_format != input.download_format():
+            ui.notification_show(
+                'PNG export needs Google Chrome, which is not available here. '
+                'Downloading an interactive HTML figure instead.',
+                type='warning', duration=10)
+
+        with ui.Progress(min=0, max=2) as p:
+            if which_format == 'png':
+                p.set(0, message='Starting the image renderer...',
+                      detail='The first PNG takes about a minute while a headless '
+                             'browser starts up. Any later one is much quicker.')
+            else:
+                p.set(0, message='Building the figure...')
+
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                out_file = os.path.join(tmp_dir, f'figure.{which_format}')
+
+                # No views are passed, so each format keeps its own default:
+                # the PNG gets the full six-view figure, the HTML the lateral
+                # view shown on screen.
+                # Built from the same snapshot the brains were drawn from, so
+                # the download always matches what is on screen.
+                shared = dict(
+                    lh=args['lh'], rh=args['rh'],
+                    lh_mask=args['lh_mask'], rh_mask=args['rh_mask'],
+                    cmap=args['cmap'], discrete=args['discrete'],
+                    fs_template=resolution,
+                    surface=surface,
+                    roi_names=roi_names,
+                    colorbar_label=args['label'],
+                    mode=args['mode'], stats=args['stats'],
+                    title=figure_title())
+
+                p.set(1, message='Rendering the figure...')
+
+                if which_format == 'png':
+                    try:
+                        vwp.surf_png(output_file=out_file, **shared)
+                    except Exception as e:
+                        # Chrome was found but could not render (sandboxing, a
+                        # partial download, no memory...). Say what happened
+                        # instead of handing back a broken file.
+                        ui.notification_show(
+                            f'Could not render the PNG ({type(e).__name__}). '
+                            'Try the HTML download instead.',
+                            type='error', duration=15)
+                        raise
+                else:
+                    vwp.surf_html(output_html=out_file, **shared)
+
+                p.set(2, message='Done!')
+
+                with open(out_file, 'rb') as f:
+                    yield f.read()
 
     return input.select_model, input.select_term, input.select_measure
+
 
 # ------------------------------------------------------------------------------
 # Define the UI and server for the OVERLAP tab
@@ -363,23 +494,10 @@ def overlap_page(tab_name):
 
 overlap_page_content = ui.div(
         # Selection pane
-        ui.layout_columns(
-            ui.input_selectize(
-                id='overlap_select_surface',
-                label='Surface type',
-                choices={'pial': 'Pial', 'infl': 'Inflated', 'flat': 'Flat'},
-                selected='pial'),
-            ui.input_selectize(
-                id='overlap_select_resolution',
-                label='Resolution',
-                choices={'fsaverage': 'High (164k nodes)', 'fsaverage6': 'Medium (50k nodes)', 'fsaverage5': 'Low (10k modes)'},
-                selected='fsaverage6'),
-
-            ui.div(' ', style='padding-top: 80px'),
-
-            col_widths=(3, 3, 2),  # negative numbers for empty spaces
-            gap='30px',
-            style=styles.SELECTION_PANE
+        selection_pane(
+            surface_choice('overlap_select_surface'),
+            resolution_choice('overlap_select_resolution'),
+            roi_choice('overlap_select_roi'),
         ),
         # Info
         ui.row(
@@ -387,11 +505,6 @@ overlap_page_content = ui.div(
             style=styles.INFO_MESSAGE
         ),
         # Brain plots
-        ui.layout_columns(
-            ui.card('Left hemisphere',
-                    output_widget('overlap_brain_left'),
-                    full_screen=True),  # expand icon appears when hovering over the card body
-            ui.card('Right hemisphere',
-                    output_widget('overlap_brain_right'),
-                    full_screen=True)
-        ))
+        ui.card(ui.card_header('Overlap between the selected maps'),
+                output_widget('overlap_brains'),
+                full_screen=True))
