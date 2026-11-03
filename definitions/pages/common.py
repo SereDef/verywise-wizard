@@ -12,6 +12,7 @@ from shinywidgets import output_widget, render_plotly
 import definitions.layout_styles as styles
 from definitions import plotting as vwp
 from definitions.backend_results import cluster_stats
+from definitions.config import CONFIG, UPSTREAM_NAME, UPSTREAM_REPO
 from definitions.plotting.atlas import region_names
 
 
@@ -69,6 +70,35 @@ def set_if_changed(value, new):
 # ------------------------------------------------------------------------------
 # Shared controls
 # ------------------------------------------------------------------------------
+
+def repo_links():
+    """
+    The repository control(s) at the right of the navbar.
+
+    A plain wizard links to verywise-wizard. A fork links to its own repository
+    and says where it came from, so visitors can find both.
+    """
+    def repo_icon(url, icon, label, size='26px'):
+        return ui.a(icon_svg(icon, fill=styles.VWW_BLUE, width=size, height=size,
+                             margin_left='0', margin_right='0.3em'),
+                    label,
+                    href=url, target='_blank', class_='vw-repo-link',
+                    style=styles.REPO_LINK)
+
+    if not CONFIG.is_fork:
+        return ui.nav_control(
+            repo_icon(UPSTREAM_REPO, 'github', ''))
+
+    return ui.nav_control(
+        ui.div(
+            repo_icon(CONFIG.repo_url, 'github', ''),
+            ui.a(icon_svg('code-fork', fill=styles.VWW_BLUE, width='11px',
+                          height='11px', margin_left='0', margin_right='0.3em'),
+                 f'forked from {UPSTREAM_NAME}',
+                 href=UPSTREAM_REPO, target='_blank', class_='vw-fork-note',
+                 style=styles.FORK_NOTE),
+            style='display: flex; align-items: center'))
+
 
 def nav_title(icon, label):
     """

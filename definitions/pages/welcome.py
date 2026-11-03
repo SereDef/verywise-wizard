@@ -1,11 +1,35 @@
-"""The WELCOME tab: point the app at a results folder, and describe what is in it."""
-from shiny import ui
+"""
+The first tab, in either of its two forms.
+
+Without a configured results folder it is the WELCOME page: point the app at a
+folder and hit GO. With one (see wizard_config.toml) it is an ABOUT page: the
+fork's own title and introduction, above a summary of the results the app
+already holds.
+"""
+from shiny import reactive, render, ui
 
 import definitions.layout_styles as styles
+from definitions.config import CONFIG
 from definitions.pages.common import nav_title
+
+FUNDING = ('This work was supported by the **FLAG-ERA** grant '
+           '[*Infant2Adult*](https://www.infant2adult.com/home) '
+           'and by The Netherlands Organization for Health Research and '
+           'Development (**ZonMw**, grant number 16080606).')
+
+
+def funding_row():
+    return ui.layout_columns(
+        ui.output_image('funders_image'),
+        ui.markdown(FUNDING),
+        col_widths=(3, 8, -1))
 
 
 def welcome_page(start_folder, tab_name):
+    """The WELCOME page, or the ABOUT page where results are configured."""
+    if CONFIG.preset:
+        return about_page(tab_name)
+
     return ui.nav_panel(
             nav_title('house', 'Welcome'),
             ui.markdown('</br>Welcome to the **verywise WIZARD** app!</br></br>'
@@ -38,12 +62,52 @@ def welcome_page(start_folder, tab_name):
             ' ',  # spacer
             ui.output_ui(id='input_folder_info'),
             ui.markdown('Have fun!</br></br></br></br>'),
-            ui.layout_columns(
-                ui.output_image("funders_image"),
-                ui.markdown('This work was supported by the **FLAG-ERA** grant [*Infant2Adult*](https://www.infant2adult.com/home) '
-                        'and by The Netherlands Organization for Health Research and Development (**ZonMw**, grant number 16080606).'),
-                        col_widths=(3, 8, -1)),
+            funding_row(),
             value=tab_name)
+
+
+DEFAULT_INTRO = (
+    'The brain surface maps in this wizard were produced with '
+    '[`verywise`](https://seredef.github.io/verywise/). '
+    'Head to the **"Main results"** tab to look at a single map, or to '
+    '**"Compare"** to put two of them side by side.')
+
+
+def about_page(tab_name):
+    """
+    What a configured wizard opens on: whose results these are, and what is in
+    them. No folder box and no GO button -- the results are already loaded.
+    """
+    return ui.nav_panel(
+        nav_title('house', 'About'),
+        ui.markdown(f'</br>## {CONFIG.title}</br>'),
+        ui.markdown(CONFIG.intro or DEFAULT_INTRO),
+        ' ',  # spacer
+        ui.output_ui(id='input_folder_info'),
+        funding_row(),
+        value=tab_name)
+
+
+def welcome_info_output(input, all_results):
+    """
+    Register the summary of the results folder.
+
+    In preset mode it renders as soon as the page loads; otherwise it waits for
+    GO, so that typing in the folder box does not keep rebuilding it.
+    """
+    if CONFIG.preset:
+        @render.ui
+        def input_folder_info():
+            return describe_input_folder(model_dict=all_results(),
+                                         selected_folder=CONFIG.results_folder)
+
+        return
+
+    @render.ui
+    @reactive.event(input.go_button)
+    def input_folder_info():
+        return describe_input_folder(model_dict=all_results(),
+                                     selected_folder=input.results_folder())
 
 
 def describe_input_folder(model_dict, selected_folder):

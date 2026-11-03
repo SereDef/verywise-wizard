@@ -1,0 +1,37 @@
+# ==============================================================================
+#  Make this your own wizard
+# ==============================================================================
+#  Fill in the folder below and this app stops asking where the results are:
+#  it loads them at startup and opens on an About page describing them.
+#
+#  Leave it empty (as it is here) and the app keeps its welcome page, where any
+#  folder can be typed in -- which is how the public demo runs.
+#
+#  Nothing else in the repository needs editing, so you can keep pulling
+#  updates from github.com/SereDef/verywise-wizard without conflicts.
+# ==============================================================================
+
+[results]
+# A path inside this repository, or a directory in a public GitHub repo
+#   folder = "./results" # (slower option) "https://github.com/your-name/your-project/tree/main/results"
+folder = ""
+
+# Which software produced them: "verywise" or "QDECR"
+software = "verywise"
+
+
+[about]
+# Shown in the browser tab, and as the heading of the About page
+#   title = "ABCD Cortical Thickness Wizard"
+
+# Shown on the About page, above the summary of your results. Markdown.
+#   intro = """
+#   Vertex-wise maps from **Defina et al. (2026)**.
+#   Pick a model on the *Main results* tab to begin.
+#   """
+
+
+[repo]
+# Your own repository. When set, the navbar links to it and notes that this
+# wizard was forked from verywise-wizard.
+#   url = "https://github.com/your-name/your-project"

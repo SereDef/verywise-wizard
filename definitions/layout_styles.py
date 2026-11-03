@@ -45,7 +45,19 @@ NAVBAR_CSS = f"""
     color: {VWW_RED};
     border-bottom: 3px solid {VWW_RED};
 }}
+
+/* The repository link(s) at the right end */
+.navbar .vw-repo-link:hover, .navbar .vw-fork-note:hover {{ color: {VWW_RED}; }}
+.navbar .vw-repo-link:hover svg, .navbar .vw-fork-note:hover svg {{
+    fill: {VWW_RED};
+}}
 """
+
+REPO_LINK = f'margin-left: 20px; text-decoration: none; color: {VWW_BLUE}'
+
+# Smaller and quieter than the fork's own link: it is provenance, not a destination
+FORK_NOTE = f'margin-left: 8px; text-decoration: none; font-size: 0.78rem; ' \
+            f'color: {VWW_BLUE}; opacity: 0.75'
 
 # Corners close to the cards' own, so the pane and the cards below it match
 SELECTION_PANE = f'padding-top: 10px; padding-right: 20px; padding-left: 20px; ' \
