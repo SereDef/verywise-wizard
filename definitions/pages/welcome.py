@@ -1,10 +1,10 @@
 """
 The first tab, in either of its two forms.
 
-Without a configured results folder it is the WELCOME page: point the app at a
-folder and hit GO. With one (see wizard_config.toml) it is an ABOUT page: the
-fork's own title and introduction, above a summary of the results the app
-already holds.
+Without a configured results folder it asks for one: point the app at a folder 
+and hit GO. With one (see wizard_config.toml) it instead introduces the wizard 
+-- its own title and description, above a summary of the results the app already 
+holds.
 """
 from shiny import reactive, render, ui
 
@@ -75,12 +75,14 @@ DEFAULT_INTRO = (
 
 def about_page(tab_name):
     """
-    What a configured wizard opens on: whose results these are, and what is in
-    them. No folder box and no GO button -- the results are already loaded.
+    The welcome page of a configured wizard: whose results these are, and what
+    is in them. No folder box and no GO button -- they are already loaded.
     """
     return ui.nav_panel(
-        nav_title('house', 'About'),
-        ui.markdown(f'</br>## {CONFIG.title}</br>'),
+        nav_title('house', 'Welcome'),
+        # ui.h2, not markdown: a '##' that follows anything on its line (the
+        # spacer this used to carry) is printed literally instead of a heading
+        ui.h2(CONFIG.title, style='padding-top: 20px'),
         ui.markdown(CONFIG.intro or DEFAULT_INTRO),
         ' ',  # spacer
         ui.output_ui(id='input_folder_info'),
@@ -98,8 +100,10 @@ def welcome_info_output(input, all_results):
     if CONFIG.preset:
         @render.ui
         def input_folder_info():
+            # No selected_folder: the reader did not choose it, so the summary
+            # does not report a path back at them
             return describe_input_folder(model_dict=all_results(),
-                                         selected_folder=CONFIG.results_folder)
+                                         selected_folder=None)
 
         return
 
@@ -147,8 +151,13 @@ def describe_input_folder(model_dict, selected_folder):
 
         info_text = info_text + sub_text + '</table>'
 
+    # A configured wizard was not pointed anywhere by whoever is reading it,
+    # so there is no selection to report back
+    chosen = (f'You have selected the directory: `{selected_folder}`</br></br>'
+              if selected_folder else '')
+
     folder_info = ui.markdown(
-        f'You have selected the directory: `{selected_folder}`</br></br>'
-        f'This folder contains the following models:{info_text}</br></br>')
+        f'{chosen}'
+        f'Models:{info_text}</br></br>')
 
     return folder_info

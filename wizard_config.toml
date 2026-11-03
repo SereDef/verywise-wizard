@@ -13,7 +13,7 @@
 
 [results]
 # A path inside this repository, or a directory in a public GitHub repo
-#   folder = "./results" # (slower option) "https://github.com/your-name/your-project/tree/main/results"
+# e.g. folder = "./results" or (slower option) "https://github.com/your-name/your-project/tree/main/results"
 folder = ""
 
 # Which software produced them: "verywise" or "QDECR"
@@ -21,17 +21,17 @@ software = "verywise"
 
 
 [about]
-# Shown in the browser tab, and as the heading of the About page
-#   title = "ABCD Cortical Thickness Wizard"
+# Shown in the browser tab, and as the heading on the home page
+#   title = "Associations of Wisdom with Cortical Thickness"
 
-# Shown on the About page, above the summary of your results. Markdown.
+# Shown on the home page, above the summary of your results. Markdown.
 #   intro = """
-#   Vertex-wise maps from **Defina et al. (2026)**.
-#   Pick a model on the *Main results* tab to begin.
+#   Vertex-wise maps from **Defina et al. (2026)** exploring the relationship
+#   between wisdom and cortical thickness.
 #   """
 
 
 [repo]
 # Your own repository. When set, the navbar links to it and notes that this
-# wizard was forked from verywise-wizard.
+# wizard was forked.
 #   url = "https://github.com/your-name/your-project"
